@@ -1,0 +1,26 @@
+{
+  "scripts": {
+    "migrate": "truffle migrate --network testnet --reset",
+    "compile": "truffle compile",
+    "verify": "truffle run verify Vault --network testnet",
+    "migrate:mainnet": "truffle migrate -f 1 --to 1 --network mainnet --reset",
+    "verify:mainnet": "truffle run verify Vault --network mainnet",
+    "migrate:master": "truffle migrate -f 6 --to 6 --network mainnet --reset",
+    "verify:master": "truffle run verify MasterSuperVault --network mainnet",
+    "migrate:factory": "truffle migrate -f 7 --to 7 --network mainnet --reset",
+    "verify:factory": "truffle run verify VaultFactory --network mainnet",
+    "build": "npm run migrate && npm run verify",
+    "test": "npx builder test",
+    "coverage": "npx builder coverage"
+  },
+  "name": "belt-contract",
+  "version": "1.0.0",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.4.1",
+    "dotenv": "^9.0.2"
+  },
+  "devDependencies": {
+    "truffle-hdwallet-provider": "^1.0.17",
+    "truffle-plugin-verify": "^0.5.11"
+  }
+}
