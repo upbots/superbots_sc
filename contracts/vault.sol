@@ -84,18 +84,10 @@ contract Vault is ERC20 {
         baseToken = _baseToken;
 
         percentDev = _percentDev;
-        
-        if (baseToken != wbnb) {
-            pathBackward = new address[](3);
-            pathBackward[0] = baseToken;
-            pathBackward[1] = wbnb;
-            pathBackward[2] = quoteToken;
-        }
-        else {
-            pathBackward = new address[](2);
-            pathBackward[0] = baseToken;
-            pathBackward[1] = quoteToken;
-        }
+
+        pathBackward = new address[](2);
+        pathBackward[0] = baseToken;
+        pathBackward[1] = quoteToken;
     }
 
     function setParameters(
@@ -522,16 +514,9 @@ contract Vault is ERC20 {
 
         address[] memory path;
 
-        if (_from == wbnb || _to == wbnb) {
-            path = new address[](2);
-            path[0] = _from;
-            path[1] = _to;
-        } else {
-            path = new address[](3);
-            path[0] = _from;
-            path[1] = wbnb;
-            path[2] = _to;
-        }
+        path = new address[](2);
+        path[0] = _from;
+        path[1] = _to;
 
         uint256[] memory amounts = UniswapRouterV2(pancakeRouter).swapExactTokensForTokens(
             _amount,

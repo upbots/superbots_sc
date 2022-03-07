@@ -251,16 +251,9 @@ contract MasterSuperVault is ERC20, Ownable {
 
         address[] memory path;
 
-        if (_from == wbnb || _to == wbnb) {
-            path = new address[](2);
-            path[0] = _from;
-            path[1] = _to;
-        } else {
-            path = new address[](3);
-            path[0] = _from;
-            path[1] = wbnb;
-            path[2] = _to;
-        }
+        path = new address[](2);
+        path[0] = _from;
+        path[1] = _to;
 
         uint256[] memory amounts = UniswapRouterV2(pancakeRouter).swapExactTokensForTokens(
             _amount,
