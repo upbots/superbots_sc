@@ -11,7 +11,7 @@ module.exports = {
             settings: {
                 optimizer: {
                     enabled: true,
-                    runs: 200   // Optimize for how many times you intend to run the code
+                    runs: 20   // Optimize for how many times you intend to run the code
                 }
                 //,evmVersion: <string> // Default: "istanbul"
             },
@@ -25,13 +25,13 @@ module.exports = {
     },
     networks: {
         mainnet: {
-            provider: () => new HDWalletProvider(privateKey, `https://bsc-dataseed1.ninicoin.io`),
+            provider: () => new HDWalletProvider(privateKey, `https://bsc-dataseed.binance.org/`),
             network_id: 56,
-	        gasPrice: 5000000000,
-            confirmations: 3,
             timeoutBlocks: 200,
-            skipDryRun: true,
-            networkCheckTimeout: 100000
+            confirmations: 3,
+	        // gasPrice: 5000000000,
+            // skipDryRun: true,
+            // networkCheckTimeout: 100000
         },
         testnet: {
             provider: () => new HDWalletProvider(privateKey, `https://data-seed-prebsc-1-s2.binance.org:8545/`),
