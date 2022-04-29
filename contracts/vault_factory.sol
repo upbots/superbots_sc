@@ -52,6 +52,9 @@ contract VaultFactory is Ownable {
         // 2. allow tokens for paraswap token transfer proxy
         newVault.approveTokensForParaswap(0x216B4B4Ba9F3e719726886d34a177484278Bfcae, MAX);
 
+        // 3. allow tokens for oneinch token transfer proxy
+        newVault.approveTokensForOneInch(0x1111111254fb6c44bAC0beD2854e76F90643097d, MAX);
+
         // 3. set strategist
         newVault.setStrategist(_strategist);
 

@@ -1,7 +1,10 @@
-const HDWalletProvider = require('truffle-hdwallet-provider');
+// const HDWalletProvider = require('truffle-hdwallet-provider');
+const HDWalletProvider = require("@truffle/hdwallet-provider");
 require('dotenv').config()
 
-const privateKey = process.env.MNEMONIC;
+const privateKey = "*"; // process.env.MNEMONIC;
+const etherscanKey = "SKAAEJUCFE47QYY83ICT6TZN3TJ7BHZH1Y";
+const bscscanKey = "8M3BNMMKBWYTW14N4DKKUCF51JIQ4Y9D4M";
 
 module.exports = {
     contracts_directory: "./contracts",
@@ -17,18 +20,16 @@ module.exports = {
             },
         }
     },
-    plugins: [
-      'truffle-plugin-verify'
-    ],
+    plugins: ["solidity-coverage", "truffle-plugin-verify"],
     api_keys: {
         bscscan: process.env.BSCSCAN_APIKEY
     },
     networks: {
         mainnet: {
-            provider: () => new HDWalletProvider(privateKey, `https://bsc-dataseed1.ninicoin.io`),
+            provider: () => new HDWalletProvider(privateKey, `https://bsc-dataseed.binance.org/`),
             network_id: 56,
 	        gasPrice: 5000000000,
-            confirmations: 3,
+            confirmations: 1,
             timeoutBlocks: 200,
             skipDryRun: true,
             networkCheckTimeout: 100000
@@ -47,5 +48,9 @@ module.exports = {
           port: 8545,
           network_id: "*"
         }
-    }
+    },
+    api_keys: {
+        etherscan: etherscanKey,
+        bscscan: bscscanKey,
+    },
 };

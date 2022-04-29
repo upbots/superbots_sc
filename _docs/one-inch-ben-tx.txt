@@ -1,0 +1,12 @@
+0. approve
+https://bscscan.com/tx/0x85384228fe8463d61777279515361cb787f63b823fff14c9bc11da64fbb74396
+
+1. usdc->bnb
+https://bscscan.com/tx/0x47681fea40f330741eebfb337746da8edcb246db3824d7b52b97c0419414128e
+
+2. busd->bnb
+https://bscscan.com/tx/0xdad629d03fe19721dcacf37a0fe89c5df9c5a949388f8691b4797d51e0535c1a
+
+
+3. busd->wbnb
+https://bscscan.com/tx/0xd74c369e2d6e288d3320f16f1ea3e01ba6c4ceeeb93598d2125a3f9c2fe9b8f8
