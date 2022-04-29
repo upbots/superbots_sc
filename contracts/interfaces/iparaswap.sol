@@ -3,7 +3,7 @@
 pragma solidity 0.8.10;
 pragma experimental ABIEncoderV2;
 
-import "./lib/Utils.sol";
+import "./lib/utils.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IParaswap {
