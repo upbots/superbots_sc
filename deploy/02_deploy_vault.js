@@ -31,9 +31,21 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
   if(isVerifying) {
     console.log(`Verifying ${contractName}, can take some time`)
     await sleep(VERIFY_DELAY);
+
+    const contractAddress = contract.address; // "0x68bc4fe78431dc2c3baa2d4c0f8182990c384dfe";
     await run("verify:verify", {
-        address: contract.address,
-        constructorArguments: [],
+        address: contractAddress,
+        constructorArguments: [
+          param.name,
+          param.tokenA,
+          param.tokenB,
+          param.strategist,
+          param.percentDev,
+          param.company,
+          param.stakers,
+          param.algoDev,
+          param.maxCap
+        ],
         contract: "contracts/vault.sol:Vault"
     })
   }
@@ -48,4 +60,4 @@ module.exports.tags = [contractName];
 // npx hardhat deploy --network ropsten --tags Vault
 
 
-// bsc: 
+// bsc: 0x68bc4fe78431dc2c3baa2d4c0f8182990c384dfe, 0xD01ee0fb89604dB1614111362a5054D53d311b45

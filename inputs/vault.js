@@ -11,15 +11,15 @@ const params = [
     maxCap: "1000000000000000000000000000000000000"
   },
   {
-    name: "WT-BNB",
+    name: "WT BNB",
     tokenA: "0xe9e7cea3dedca5984780bafc599bd69add087d56", // BUSD (mainnet)
     tokenB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB (mainnet)
-    strategist: "0xC146C87c8E66719fa1E151d5A7D6dF9f0D3AD156",
+    strategist: "0x43C9Ac8E33a11D1C75fCB70B89502dA78f69CCA7",
     percentDev: 500, // 500/10000
-    company: "0xC146C87c8E66719fa1E151d5A7D6dF9f0D3AD156",
-    stakers: "0xeF729c381bCACFDb8fB5ccEf17079a5d9237ee64",
-    algoDev: "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851",
-    maxCap: "1000000000000000000000000000000000000"
+    company: "0xAD3e4faC288bfa76d92210a25646c33de702174E",
+    stakers: "0x4D5Fb87308a7B9C576a900e11f094628158627F6",
+    algoDev: "0x81e1b56039f35F19f17d3C5dC9a3EDC6Ca1D6F4A",
+    maxCap: "5000000000000000000000000"
   },
   {
     name: "WOW-DOGE",
