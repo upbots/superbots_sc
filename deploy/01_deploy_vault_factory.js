@@ -46,7 +46,7 @@ module.exports.tags = [contractName];
 
 // _baseToken (address) : 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c
 
-// _strategist (address) : 0x43C9Ac8E33a11D1C75fCB70B89502dA78f69CCA7
+// _strategist (address) : 0x43C9Ac8E33a11D1C75fCB70B89502dA78f69CCA7, 0xC12Fc1fCcB07aa658e5eAD56d385864a284eA31F
 
 // _percentDev (uint256) : 500
 

@@ -9,10 +9,10 @@ const walletAddress = '0xC12Fc1fCcB07aa658e5eAD56d385864a284eA31F'; // Set your 
 const privateKey = 'feffa1734dd0bf417038c63b8d7bc3df94a723c021aff6cc844743ccc1dd133e'; // Set private key of your wallet. Be careful! Don't share this key to anyone!
 
 const swapParams = {
-    fromTokenAddress: '0xe9e7cea3dedca5984780bafc599bd69add087d56', // BUSD
-    toTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
-    amount: '1000000000000000',
-    fromAddress: walletAddress,
+    fromTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // BUSD
+    toTokenAddress: '0xe9e7cea3dedca5984780bafc599bd69add087d56', // WBNB
+    amount: '100000000000000000',
+    fromAddress: '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
     slippage: 1,
     disableEstimate: false,
     allowPartialFill: false,
