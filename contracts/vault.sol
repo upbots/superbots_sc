@@ -524,9 +524,16 @@ contract Vault is ERC20 {
 
         address[] memory path;
 
-        path = new address[](2);
-        path[0] = _from;
-        path[1] = _to;
+        if (_from == quoteToken || _to == quoteToken) {
+            path = new address[](2);
+            path[0] = _from;
+            path[1] = _to;
+        } else {
+            path = new address[](3);
+            path[0] = _from;
+            path[1] = quoteToken;
+            path[2] = _to;
+        }
 
         uint256[] memory amounts = UniswapRouterV2(pancakeRouter).swapExactTokensForTokens(
             _amount,
