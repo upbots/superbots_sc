@@ -26,6 +26,7 @@ contract VaultFactory is Ownable {
         address _company, 
         address _stakers, 
         address _algoDev,
+        address _depositFees,
         uint256 _maxCap
     ) public onlyOwner {
 
@@ -35,6 +36,7 @@ contract VaultFactory is Ownable {
         require(_company != address(0));
         require(_stakers != address(0));
         require(_algoDev != address(0));
+        require(_depositFees != address(0));
         require (address(this).balance > LITTLE_BNB, "Put some BNB to this smart contract to give to the generated vaults");
         
         // 1. deploy a new vault
@@ -47,6 +49,7 @@ contract VaultFactory is Ownable {
             _company, 
             _stakers, 
             _algoDev, 
+            _depositFees,
             _maxCap);
         
         // 3. allow tokens for oneinch token transfer proxy

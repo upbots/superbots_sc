@@ -40,6 +40,7 @@ contract Vault is ERC20 {
     address public company;
     address public stakers;
     address public algoDev;
+    address public depositFees;
 
     uint256 public constant SWAP_MIN = 10 ** 6;
 
@@ -67,6 +68,7 @@ contract Vault is ERC20 {
         address _company, 
         address _stakers, 
         address _algoDev,
+        address _depositFees,
         uint256 _maxCap
     )
         ERC20(
@@ -85,6 +87,7 @@ contract Vault is ERC20 {
         company = _company;
         stakers = _stakers;
         algoDev = _algoDev;
+        depositFees = _depositFees;
         maxCap = _maxCap;
 
         strategist = _strategist;
@@ -159,13 +162,18 @@ contract Vault is ERC20 {
         uint256 _pool = poolSize();
         require (maxCap == 0 || _pool + amount < maxCap, "The vault reached the max cap");
 
-        // 2. transfer quote from sender to this vault
+        // 2. pay deposit fees
+        uint256 fees = amount * 0.02;
+        IERC20(quoteToken).transferFrom(msg.sender, depositFees, amount);
+        amount = amount - fees;
+
+        // 3. transfer quote from sender to this vault
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IERC20(quoteToken).transferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
-        // 3. swap Quote to Base if position is opened
+        // 4. swap Quote to Base if position is opened
         if (position == 1) {
             soldAmount = soldAmount + amount;
 
@@ -177,7 +185,7 @@ contract Vault is ERC20 {
             _pool = _before;
         }
 
-        // 4. calculate share and send back xUBXT
+        // 5. calculate share and send back xUBXT
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
@@ -196,7 +204,12 @@ contract Vault is ERC20 {
         uint256 expectedQuote = amounts[amounts.length - 1];
         require (maxCap == 0 || _pool + expectedQuote < maxCap, "The vault reached the max cap");
 
-        // 2. transfer base from sender to this vault
+        // 2. pay deposit fees
+        uint256 fees = amount * 0.02;
+        IERC20(quoteToken).transferFrom(msg.sender, depositFees, amount);
+        amount = amount - fees;
+
+        // 3. transfer base from sender to this vault
         uint256 _before = IERC20(baseToken).balanceOf(address(this));
         IERC20(baseToken).transferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(baseToken).balanceOf(address(this));
@@ -204,7 +217,7 @@ contract Vault is ERC20 {
 
         _pool = _before;
 
-        // 3. swap Base to Quote if position is closed
+        // 4. swap Base to Quote if position is closed
         if (position == 0) {
             _before = IERC20(quoteToken).balanceOf(address(this));
             _swapPancakeswap(baseToken, quoteToken, amount);
@@ -220,7 +233,7 @@ contract Vault is ERC20 {
             soldAmount = soldAmount + expectedQuote;
         }
 
-        // 4. calculate share and send back xUBXT
+        // 5. calculate share and send back xUBXT
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
@@ -238,6 +251,9 @@ contract Vault is ERC20 {
 
             uint256 amountQuote = IERC20(quoteToken).balanceOf(address(this)) * shares / totalSupply();
             if (amountQuote > 0) {
+                uint256 fees = amountQuote * 0.02;
+                IERC20(quoteToken).transfer(depositFees, amountQuote);
+                amountQuote = amountQuote - fees;
                 IERC20(quoteToken).transfer(msg.sender, amountQuote);
             }
         }
@@ -258,6 +274,9 @@ contract Vault is ERC20 {
             soldAmount = soldAmount - thisSoldAmount;
             
             if (amountBase > 0) {
+                uint256 fees = amountBase * 0.02;
+                IERC20(quoteToken).transfer(depositFees, amountBase);
+                amountBase = amountBase - fees;
                 IERC20(baseToken).transfer(msg.sender, amountBase);
             }
         }
@@ -383,11 +402,16 @@ contract Vault is ERC20 {
     }
     
     function setStrategist(address _address) public {
-        
         require(_address != address(0), "Please provide valid address");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = true;
         strategist = _address;
+    }
+    
+    function setDepositFees(address _address) public {
+        require(_address != address(0), "Please provide valid address");
+        require(msg.sender == strategist, "Not strategist");
+        depositFees = _address;
     }
 
     function isWhitelisted(address _address) public view returns(bool) {
