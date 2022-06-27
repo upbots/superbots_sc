@@ -60,4 +60,4 @@ module.exports.tags = [contractName];
 // npx hardhat deploy --network ropsten --tags Vault
 
 
-// bsc: 0xD01ee0fb89604dB1614111362a5054D53d311b45, 0x788AC1A24A69DA952Ded90586d03F7F749c4D998
+// bsc: 0xa25CDc2152908dBfd69cFC20734F19ade9a06b03

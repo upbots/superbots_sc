@@ -28,9 +28,9 @@ contract Vault is ERC20 {
     address public constant ubxt = 0xBbEB90cFb6FAFa1F69AA130B7341089AbeEF5811; // mainnet
     
     uint16 public percentDev = 500;
-    uint16 public percentUpbotsFee = 10;
-    uint16 public percentBurn = 350;
-    uint16 public percentStakers = 350;
+    uint16 public percentUpbotsFee = 6;
+    uint16 public percentBurn = 250;
+    uint16 public percentStakers = 250;
     uint16 public constant percentMax = 10000;
 
     address[] private pathBackward;
@@ -548,100 +548,14 @@ contract Vault is ERC20 {
         require(amounts[0] > 0, "There was problem in pancakeswap");
     }
 
-    function buyOneinch(bytes memory swapCalldata) public {
-        
-        require(oneinchCallAddr != address(0), "Please provide valid address");
-
-        // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
-
-        // 1. Check if the vault is in closed position
-        require(position == 0, "The vault is already in open position");
-
-        // 2. get the amount of quoteToken to trade
-        uint256 amount = IERC20(quoteToken).balanceOf(address(this));
-        require (amount > 0, "No enough balance to trade");
-
-        // 3. takeUpbotsFees
-        amount = takeUpbotsFees(quoteToken, amount);
-
-        // 4. save the remaining to soldAmount
-        soldAmount = amount;
-
-        // 5. swap tokens to B
-        (bool success,) = oneinchCallAddr.call(swapCalldata);
-        
-        if (!success) {
-            // Copy revert reason from call
-            assembly {
-                returndatacopy(0, 0, returndatasize())
-                revert(0, returndatasize())
-            }
-        }
-
-        // 6. update position
-        position = 1;
-    }
-
-    function sellOneinch(bytes memory swapCalldata) public {
-        
-        require(oneinchCallAddr != address(0), "Please provide valid address");
-
-        // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
-
-        // 1. check if the vault is in open position
-        require(position == 1, "The vault is in closed position");
-
-        // 2. get the amount of baseToken to trade
-        uint256 amount = IERC20(baseToken).balanceOf(address(this));
-
-        if (amount > 0) {
-
-            // 3. takeUpbotsFee
-            amount = takeUpbotsFees(baseToken, amount);
-
-            // 3. swap tokens to Quote and get the newly create quoteToken
-            uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-            (bool success,) = oneinchCallAddr.call(swapCalldata);
-            
-            if (!success) {
-                // Copy revert reason from call
-                assembly {
-                    returndatacopy(0, 0, returndatasize())
-                    revert(0, returndatasize())
-                }
-            }
-            uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-            amount = _after - _before;
-
-            // 4. calculate the profit in percent
-            profit = profit * amount / soldAmount;
-
-            // 5. take performance fees in case of profit
-            if (profit > percentMax) {
-
-                uint256 profitAmount = amount * (profit - percentMax) / profit;
-                takePerformanceFees(profitAmount);
-                profit = percentMax;
-            }
-        }
-
-        // 6. update soldAmount
-        soldAmount = 0;
-
-        // 7. update position
-        position = 0;
-    }
-
-    // function extractOneInch(bytes calldata swapCalldata) public pure returns (address caller) {
     function buyOneinchByParams(
         IOneInchAggregationExecutor oneInchCaller,
         OneInchSwapDescription calldata oneInchDesc,
         bytes calldata oneInchData
     ) public {
-        
         require(oneinchCallAddr != address(0), "Please provide valid address");
+        
+        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
 
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");
@@ -682,6 +596,8 @@ contract Vault is ERC20 {
     ) public {
         
         require(oneinchCallAddr != address(0), "Please provide valid address");
+
+        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
 
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");

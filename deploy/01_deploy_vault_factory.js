@@ -36,8 +36,8 @@ module.exports.tags = [contractName];
 // npx hardhat deploy --network ropsten --tags VaultFactory
 
 
-// bsc: 0x707222D01d0Fd1daa6C2Eaf623E15bE54cda3C05
-
+// bsc: 0x707222D01d0Fd1daa6C2Eaf623E15bE54cda3C05, 0x391208b0A29Be0C9B9B78c95b7e577Ff098211Dc
+// 0x1bd8f4B2D29ccF39fC4A64869a90fA8bF75fba9b  (new)
 
 
 // _name (string) : WT BNB
