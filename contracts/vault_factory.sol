@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.10;
+pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./vault.sol";
@@ -18,38 +18,35 @@ contract VaultFactory is Ownable {
     }
     
     function generateVault(
-        string memory _name, 
+        string memory _name,
         address _quoteToken, 
-        address _baseToken, 
-        address _strategist, 
-        uint16 _percentDev, 
-        address _company, 
-        address _stakers, 
-        address _algoDev,
-        address _depositFees,
+        address _baseToken,
+        address _strategist,
+        address _addrStakers, 
+        uint16 _pctDeposit,
+        uint16 _pctWithdraw,
+        uint16 _pctTradUpbots,
         uint256 _maxCap
     ) public onlyOwner {
 
         require(_quoteToken != address(0));
         require(_baseToken != address(0));
         require(_strategist != address(0));
-        require(_company != address(0));
-        require(_stakers != address(0));
-        require(_algoDev != address(0));
-        require(_depositFees != address(0));
+
+        require(_addrStakers != address(0));
+
         require (address(this).balance > LITTLE_BNB, "Put some BNB to this smart contract to give to the generated vaults");
         
         // 1. deploy a new vault
         Vault newVault = new Vault(
-            _name, 
+            _name,
             _quoteToken, 
             _baseToken, 
             address(this), 
-            _percentDev, 
-            _company, 
-            _stakers, 
-            _algoDev, 
-            _depositFees,
+            _addrStakers,
+            _pctDeposit,
+            _pctWithdraw,
+            _pctTradUpbots,
             _maxCap);
         
         // 3. allow tokens for oneinch token transfer proxy

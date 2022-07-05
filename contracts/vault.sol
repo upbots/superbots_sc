@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.10;
+pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -10,65 +10,72 @@ import "./interfaces/iparaswap.sol";
 import "./interfaces/oneinch.sol";
 
 contract Vault is ERC20 {
-    address public strategist;
-    mapping(address => bool) public whiteList;
+    string public vaultName;
+    bool public isForPartner;
 
     address public quoteToken;
     address public baseToken;
+
+    address public strategist;
+    mapping(address => bool) public whiteList;
 
     uint256 public maxCap = 0;
     uint256 public position = 0; // 0: closed, 1: opened
     uint256 public soldAmount = 0;
     uint256 public profit = percentMax;
 
-    address public constant burnAddress = 0x000000000000000000000000000000000000dead;
+    // path backward for the pancake
+    address[] private pathBackward;
+
+    // 1inch
+    address public oneInchRouterAddr;
+
+    address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
 
     address public constant pancakeRouter = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // mainnet v2
 
     address public constant wbnb = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c; // mainnet
 
     address public constant ubxt = 0xBbEB90cFb6FAFa1F69AA130B7341089AbeEF5811; // mainnet
-    
-    uint16 public percentDev = 500;
-    uint16 public percentUpbotsFee = 6;
-    uint16 public percentBurn = 250;
-    uint16 public percentStakers = 250;
-    uint16 public constant percentMax = 10000;
-
-    address[] private pathBackward;
-
-    address public company;
-    address public stakers;
-    address public algoDev;
-    address public depositFees;
 
     uint256 public constant SWAP_MIN = 10 ** 6;
 
-    string public vaultName;
+    uint16 public constant percentMax = 10000;
 
-    // paraswap
-    address public paraswapCallAddr;
-    
-    // 1inch
-    address public oneinchCallAddr;
+    // percent values for the fees
+    uint16 public pctDeposit = 45;
+    uint16 public pctWithdraw = 100;
+
+    uint16 public pctPerfBurning = 250;
+    uint16 public pctPerfStakers = 250;
+    uint16 public pctPerfAlgoDev = 500;
+    uint16 public pctPerfUpbots = 500;
+    uint16 public pctPerfPartners = 1000;
+
+    uint16 public pctTradUpbots = 8;
+
+    // address for the fees
+    address public addrStakers;
+    address public addrAlgoDev;
+    address public addrUpbots;
+    address public addrPartner;
 
     event Received(address, uint);
-    event ParameterUpdated(address, address, address, uint16, uint16, uint16, uint16, uint256);
+    event ParameterUpdated(address, address, address, address, uint16, uint16, uint256);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
     }
 
     constructor(
-        string memory _name, 
+        string memory _name,
         address _quoteToken, 
         address _baseToken, 
-        address _strategist, 
-        uint16 _percentDev, 
-        address _company, 
-        address _stakers, 
-        address _algoDev,
-        address _depositFees,
+        address _strategist,
+        address _addrStakers,
+        uint16 _pctDeposit,
+        uint16 _pctWithdraw,
+        uint16 _pctTradUpbots,
         uint256 _maxCap
     )
         ERC20(
@@ -79,16 +86,19 @@ contract Vault is ERC20 {
         require(_quoteToken != address(0), "Please provide valid address");
         require(_baseToken != address(0), "Please provide valid address");
         require(_strategist != address(0), "Please provide valid address");
-        require(_company != address(0), "Please provide valid address");
-        require(_stakers != address(0), "Please provide valid address");
-        require(_algoDev != address(0), "Please provide valid address");
+        require(_addrStakers != address(0), "Please provide valid address");
 
         vaultName = _name;
-        company = _company;
-        stakers = _stakers;
-        algoDev = _algoDev;
-        depositFees = _depositFees;
+
+        addrStakers = _addrStakers;
+        
+        pctDeposit = _pctDeposit < percentMax ? _pctDeposit : pctDeposit;
+        pctWithdraw = _pctWithdraw < percentMax ? _pctWithdraw : pctWithdraw;
+        pctTradUpbots = _pctTradUpbots < percentMax ? _pctTradUpbots : pctTradUpbots;
+
         maxCap = _maxCap;
+
+        isForPartner = false;
 
         strategist = _strategist;
         whiteList[_strategist] = true;
@@ -96,51 +106,74 @@ contract Vault is ERC20 {
         quoteToken = _quoteToken;
         baseToken = _baseToken;
 
-        percentDev = _percentDev;
 
         pathBackward = new address[](2);
         pathBackward[0] = baseToken;
         pathBackward[1] = quoteToken;
 
-        paraswapCallAddr = 0xDEF171Fe48CF0115B1d80b88dc8eAB59176FEe57;
-        oneinchCallAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
+        oneInchRouterAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
     }
 
     function setParameters(
-        uint16 _percentDev, 
-        uint16 _percentUpbotsFee, 
-        uint16 _percentBurn,
-        uint16 _percentStakers,
-        address _company, 
-        address _stakers, 
-        address _algoDev,
+        address _addrStakers,
+        address _addrAlgoDev,
+        address _addrUpbots,
+        address _addrPartner,        
+        uint16 _pctPerfAlgoDev,
+        uint16 _pctPerfPartner,
         uint256 _maxCap
     ) public  {
         
-        require(_company != address(0), "Please provide valid address");
-        require(_stakers != address(0), "Please provide valid address");
-        require(_algoDev != address(0), "Please provide valid address");
+        require(_addrUpbots != address(0), "Please provide valid address");
+        require(_addrStakers != address(0), "Please provide valid address");
+        require(_addrAlgoDev != address(0), "Please provide valid address");
         require(msg.sender == strategist, "Not strategist");
 
-        company = _company;
-        stakers = _stakers;
-        algoDev = _algoDev;
-        percentDev = _percentDev;
-        percentUpbotsFee = _percentUpbotsFee;
-        percentBurn = _percentBurn;
-        percentStakers = _percentStakers;
+        addrStakers = _addrStakers;
+        addrAlgoDev = _addrAlgoDev;
+        addrUpbots = _addrUpbots;
+        addrPartner = _addrPartner;
+        
+        pctPerfAlgoDev = _pctPerfAlgoDev < percentMax ? _pctPerfAlgoDev : pctPerfAlgoDev;
+        pctPerfPartners = _pctPerfPartner  < percentMax ? _pctPerfPartner : pctPerfPartners;
+
         maxCap = _maxCap;
 
-        emit ParameterUpdated(company, stakers, algoDev, percentDev, percentUpbotsFee, percentBurn, percentStakers, maxCap);
+        isForPartner = _addrPartner != address(0);
+
+        emit ParameterUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner, pctPerfAlgoDev, pctPerfPartners, maxCap);
     }
 
-    // Send remanining BNB (used for paraswap integration) to other wallet
-    function fundTransfer(address receiver, uint256 amount) public {
-        
-        require(msg.sender == strategist, "Not strategist");
-        require(receiver != address(0), "Please provide valid address");
+    function poolSize() public view returns (uint256) {
+        return
+            (IERC20(quoteToken).balanceOf(address(this)) + _calculateQuoteFromBase());
+    }
 
-        payable(receiver).transfer(amount);
+    function addToWhiteList(address _address) public {
+        require(msg.sender == strategist, "Not strategist");
+        whiteList[_address] = true;
+    }
+
+    function removeFromWhiteList(address _address) public {
+        require(msg.sender == strategist, "Not strategist");
+        whiteList[_address] = false;
+    }
+
+    function isWhitelisted(address _address) public view returns(bool) {
+        return whiteList[_address];
+    }
+
+    function setStrategist(address _address) public {
+        require(_address != address(0), "Please provide valid address");
+        require(msg.sender == strategist, "Not strategist");
+        whiteList[_address] = true;
+        strategist = _address;
+    }
+
+    function setPartnerAddress(address _address) public {
+        require(_address != address(0), "Please provide valid address");
+        require(msg.sender == strategist, "Not strategist");
+        addrPartner = _address;
     }
 
     function approveTokensForOneinch(address oneinch, uint256 amount) public {
@@ -151,9 +184,45 @@ contract Vault is ERC20 {
         IERC20(baseToken).approve(oneinch, amount);
     }
 
-    function poolSize() public view returns (uint256) {
-        return
-            (IERC20(quoteToken).balanceOf(address(this)) + _calculateQuoteFromBase());
+    function resetTrade() public {
+        
+        require(msg.sender == strategist, "Not strategist");
+
+        // 1. swap all baseToken to quoteToken
+        uint256 amount = IERC20(baseToken).balanceOf(address(this));
+        if (amount > 10**6) {
+            _swapPancakeswap(baseToken, quoteToken, amount);
+        }
+
+        // 2. reset profit calculation
+        profit = percentMax;
+        soldAmount = 0;
+
+        // 3. reset position
+        position = 0;
+    }
+
+    function resetTradeOneinch(bytes memory swapCalldata) public {
+        
+        require(msg.sender == strategist, "Not strategist");
+
+        // 1. swap all baseToken to quoteToken
+        (bool success,) = oneInchRouterAddr.call(swapCalldata);
+        
+        if (!success) {
+            // Copy revert reason from call
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
+        }
+
+        // 2. reset profit calculation
+        profit = percentMax;
+        soldAmount = 0;
+
+        // 3. reset position
+        position = 0;
     }
 
     function depositQuote(uint256 amount) public {
@@ -162,16 +231,14 @@ contract Vault is ERC20 {
         uint256 _pool = poolSize();
         require (maxCap == 0 || _pool + amount < maxCap, "The vault reached the max cap");
 
-        // 2. pay deposit fees
-        uint256 fees = amount * 0.02;
-        IERC20(quoteToken).transferFrom(msg.sender, depositFees, amount);
-        amount = amount - fees;
-
-        // 3. transfer quote from sender to this vault
+        // 2. transfer quote from sender to this vault
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IERC20(quoteToken).transferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
+
+        // 3. pay deposit fees
+        amount = takeDepositFees(quoteToken, amount);
 
         // 4. swap Quote to Base if position is opened
         if (position == 1) {
@@ -204,19 +271,16 @@ contract Vault is ERC20 {
         uint256 expectedQuote = amounts[amounts.length - 1];
         require (maxCap == 0 || _pool + expectedQuote < maxCap, "The vault reached the max cap");
 
-        // 2. pay deposit fees
-        uint256 fees = amount * 0.02;
-        IERC20(quoteToken).transferFrom(msg.sender, depositFees, amount);
-        amount = amount - fees;
-
-        // 3. transfer base from sender to this vault
+        // 2. transfer base from sender to this vault
         uint256 _before = IERC20(baseToken).balanceOf(address(this));
         IERC20(baseToken).transferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(baseToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
-        _pool = _before;
+        // 3. pay deposit fees
+        amount = takeWithdrawFees(baseToken, amount);
 
+        _pool = _before;
         // 4. swap Base to Quote if position is closed
         if (position == 0) {
             _before = IERC20(quoteToken).balanceOf(address(this));
@@ -229,7 +293,6 @@ contract Vault is ERC20 {
 
         // update soldAmount if position is opened
         if (position == 1) {
-            // soldAmount = soldAmount + amounts[2];
             soldAmount = soldAmount + expectedQuote;
         }
 
@@ -251,9 +314,8 @@ contract Vault is ERC20 {
 
             uint256 amountQuote = IERC20(quoteToken).balanceOf(address(this)) * shares / totalSupply();
             if (amountQuote > 0) {
-                uint256 fees = amountQuote * 0.02;
-                IERC20(quoteToken).transfer(depositFees, amountQuote);
-                amountQuote = amountQuote - fees;
+                // pay withdraw fees
+                amountQuote = takeWithdrawFees(quoteToken, amountQuote);
                 IERC20(quoteToken).transfer(msg.sender, amountQuote);
             }
         }
@@ -268,15 +330,14 @@ contract Vault is ERC20 {
             if (_profit > percentMax) {
 
                 uint256 profitAmount = amountBase * (_profit - percentMax) / _profit;
-                uint256 feeAmount = takePerformanceFeesFromBaseToken(profitAmount);
+                uint256 feeAmount = takePerfFeesFromBaseToken(profitAmount);
                 amountBase = amountBase - feeAmount;
             }
             soldAmount = soldAmount - thisSoldAmount;
             
             if (amountBase > 0) {
-                uint256 fees = amountBase * 0.02;
-                IERC20(quoteToken).transfer(depositFees, amountBase);
-                amountBase = amountBase - fees;
+                // pay withdraw fees
+                amountBase = takeWithdrawFees(baseToken, amountBase);
                 IERC20(baseToken).transfer(msg.sender, amountBase);
             }
         }
@@ -297,8 +358,8 @@ contract Vault is ERC20 {
         uint256 amount = IERC20(quoteToken).balanceOf(address(this));
         require (amount > 0, "No enough balance to trade");
 
-        // 3. takeUpbotsFees
-        amount = takeUpbotsFees(quoteToken, amount);
+        // 3. takeTradingFees
+        amount = takeTradingFees(quoteToken, amount);
 
         // 4. save the remaining to soldAmount
         soldAmount = amount;
@@ -323,7 +384,7 @@ contract Vault is ERC20 {
         if (amount > 0) {
 
             // 3. takeUpbotsFee
-            amount = takeUpbotsFees(baseToken, amount);
+            amount = takeTradingFees(baseToken, amount);
 
             // 3. swap tokens to Quote and get the newly create quoteToken
             uint256 _before = IERC20(quoteToken).balanceOf(address(this));
@@ -338,7 +399,7 @@ contract Vault is ERC20 {
             if (profit > percentMax) {
 
                 uint256 profitAmount = amount * (profit - percentMax) / profit;
-                takePerformanceFees(profitAmount);
+                takePerfFees(profitAmount);
                 profit = percentMax;
             }
         }
@@ -350,32 +411,37 @@ contract Vault is ERC20 {
         position = 0;
     }
 
-    function resetTrade() public {
+    function buyOneinchByParams(
+        IOneInchAggregationExecutor oneInchCaller,
+        OneInchSwapDescription calldata oneInchDesc,
+        bytes calldata oneInchData
+    ) public {
+        // 0. check whitelist
+        require(isWhitelisted(msg.sender), "Not whitelisted");
+
+        require(oneInchRouterAddr != address(0), "Please provide valid address");
+        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
+
+        // 1. Check if the vault is in closed position
+        require(position == 0, "The vault is already in open position");
+
+        // 2. get the amount of quoteToken to trade
+        uint256 amount = IERC20(quoteToken).balanceOf(address(this));
+        require (amount > 0, "No enough balance to trade");
+        require(amount >= oneInchDesc.amount, "The swapping amount is small than vault amount");
+        require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
+
+        // 3. takeTradingFees
+        amount = takeTradingFees(quoteToken, amount);
+
+        // 4. save the remaining to soldAmount
+        soldAmount = amount;
+
+        // 5. swap tokens to B
+        IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
+        (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
         
-        require(msg.sender == strategist, "Not strategist");
-
-        // 1. swap all baseToken to quoteToken
-        uint256 amount = IERC20(baseToken).balanceOf(address(this));
-        if (amount > 10**6) {
-            _swapPancakeswap(baseToken, quoteToken, amount);
-        }
-
-        // 2. reset profit calculation
-        profit = percentMax;
-        soldAmount = 0;
-
-        // 3. reset position
-        position = 0;
-    }
-
-    function resetTradeOneinch(bytes memory swapCalldata) public {
-        
-        require(msg.sender == strategist, "Not strategist");
-
-        // 1. swap all baseToken to quoteToken
-        (bool success,) = oneinchCallAddr.call(swapCalldata);
-        
-        if (!success) {
+        if (returnAmount == 0) {
             // Copy revert reason from call
             assembly {
                 returndatacopy(0, 0, returndatasize())
@@ -383,49 +449,106 @@ contract Vault is ERC20 {
             }
         }
 
-        // 2. reset profit calculation
-        profit = percentMax;
+        // 6. update position
+        position = 1;
+    }
+
+    function sellOneinchByParams(
+        IOneInchAggregationExecutor oneInchCaller,
+        OneInchSwapDescription calldata oneInchDesc,
+        bytes calldata oneInchData
+    ) public {
+        
+        // 0. check whitelist
+        require(isWhitelisted(msg.sender), "Not whitelisted");
+
+        require(oneInchRouterAddr != address(0), "Please provide valid address");
+        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
+
+        // 1. check if the vault is in open position
+        require(position == 1, "The vault is in closed position");
+
+        // 2. get the amount of baseToken to trade
+        uint256 amount = IERC20(baseToken).balanceOf(address(this));
+
+        require (amount > 0, "No enough balance to trade");
+        require(amount >= oneInchDesc.amount, "The swapping amount is low than vault amount");
+        require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
+
+        // 3. takeUpbotsFee
+        amount = takeTradingFees(baseToken, amount);
+
+        // 3. swap tokens to Quote and get the newly create quoteToken
+        uint256 _before = IERC20(quoteToken).balanceOf(address(this));
+        IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
+        (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
+
+        if (returnAmount == 0) {
+            // Copy revert reason from call
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
+        }
+        uint256 _after = IERC20(quoteToken).balanceOf(address(this));
+        amount = _after - _before;
+
+        // 4. calculate the profit in percent
+        profit = profit * amount / soldAmount;
+
+        // 5. take performance fees in case of profit
+        if (profit > percentMax) {
+
+            uint256 profitAmount = amount * (profit - percentMax) / profit;
+            takePerfFees(profitAmount);
+            profit = percentMax;
+        }
+
+        // 6. update soldAmount
         soldAmount = 0;
 
-        // 3. reset position
+        // 7. update position
         position = 0;
     }
 
-    function addToWhiteList(address _address) public {
-        require(msg.sender == strategist, "Not strategist");
-        whiteList[_address] = true;
-    }
+    function takeDepositFees(address token, uint256 amount) private returns(uint256) {
+        
+        if (amount == 0) {
+            return 0;
+        }
 
-    function removeFromWhiteList(address _address) public {
-        require(msg.sender == strategist, "Not strategist");
-        whiteList[_address] = false;
+        if (!isForPartner) {
+            return amount;
+        }
+
+        uint256 fees = amount * pctDeposit / percentMax;
+        IERC20(token).transfer(addrPartner, fees);
+        return amount - fees;
     }
     
-    function setStrategist(address _address) public {
-        require(_address != address(0), "Please provide valid address");
-        require(msg.sender == strategist, "Not strategist");
-        whiteList[_address] = true;
-        strategist = _address;
-    }
-    
-    function setDepositFees(address _address) public {
-        require(_address != address(0), "Please provide valid address");
-        require(msg.sender == strategist, "Not strategist");
-        depositFees = _address;
+    function takeWithdrawFees(address token, uint256 amount) private returns(uint256) {
+        
+        if (amount == 0) {
+            return 0;
+        }
+
+        if (!isForPartner) {
+            return amount;
+        }
+
+        uint256 fees = amount * pctWithdraw / percentMax;
+        IERC20(token).transfer(addrPartner, fees);
+        return amount - fees;
     }
 
-    function isWhitelisted(address _address) public view returns(bool) {
-        return whiteList[_address];
-    }
-
-    function takeUpbotsFees(address token, uint256 amount) private returns(uint256) {
+    function takeTradingFees(address token, uint256 amount) private returns(uint256) {
         
         if (amount == 0) {
             return 0;
         }
 
         // calculate fee
-        uint256 fee = amount * percentUpbotsFee / percentMax;
+        uint256 fee = amount * pctTradUpbots / percentMax;
 
         // swap to UBXT
         uint256 _before = IERC20(ubxt).balanceOf(address(this));
@@ -434,25 +557,28 @@ contract Vault is ERC20 {
         uint256 ubxtAmt = _after - _before;
 
         // transfer to company wallet
-        IERC20(ubxt).transfer(company, ubxtAmt);
+        IERC20(ubxt).transfer(addrUpbots, ubxtAmt);
         
         // return remaining token amount 
         return amount - fee;
     }
     
-    function takePerformanceFees(uint256 amount) private {
+    function takePerfFees(uint256 amount) private {
 
         if (amount == 0) {
             return ;
         }
 
         // calculate fees
-        uint256 burnAmount = amount * percentBurn / percentMax;
-        uint256 stakersAmount = amount * percentStakers / percentMax;
-        uint256 devAmount = amount * percentDev / percentMax;
+        uint256 burnAmount = amount * pctPerfBurning / percentMax;
+        uint256 stakersAmount = amount * pctPerfStakers / percentMax;
+        uint256 devAmount = amount * pctPerfAlgoDev / percentMax;
+        uint256 pctCompany = isForPartner ? pctPerfPartners : pctPerfUpbots;
+        address addrCompany = isForPartner ? addrPartner : addrUpbots;
+        uint256 companyAmount = amount * pctCompany / percentMax;
         
         // swap to UBXT
-        uint256 _total = stakersAmount + devAmount + burnAmount;
+        uint256 _total = stakersAmount + devAmount + burnAmount + companyAmount;
         uint256 _before = IERC20(ubxt).balanceOf(address(this));
         _swapPancakeswap(quoteToken, ubxt, _total);
         uint256 _after = IERC20(ubxt).balanceOf(address(this));
@@ -461,7 +587,8 @@ contract Vault is ERC20 {
         // calculate UBXT amounts
         stakersAmount = ubxtAmt * stakersAmount / _total;
         devAmount = ubxtAmt * devAmount / _total;
-        burnAmount = ubxtAmt - stakersAmount - devAmount;
+        companyAmount = ubxtAmt * companyAmount / _total;
+        burnAmount = ubxtAmt - stakersAmount - devAmount - companyAmount;
 
         // Transfer
         IERC20(ubxt).transfer(
@@ -470,26 +597,31 @@ contract Vault is ERC20 {
         );
         
         IERC20(ubxt).transfer(
-            stakers,
+            addrStakers, // stakers
             stakersAmount
         );
 
         IERC20(ubxt).transfer(
-            algoDev,
+            addrAlgoDev, // algodev
             devAmount
+        );
+
+        IERC20(ubxt).transfer(
+            addrCompany, // company (upbots or partner)
+            companyAmount
         );
     }
 
-    function takePerformanceFeesFromBaseToken(uint256 amount) private returns(uint256) {
+    function takePerfFeesFromBaseToken(uint256 amount) private returns(uint256) {
 
         if (amount == 0) {
             return 0;
         }
 
         // calculate fees
-        uint256 burnAmount = amount * percentBurn / percentMax;
-        uint256 stakersAmount = amount * percentStakers / percentMax;
-        uint256 devAmount = amount * percentDev / percentMax;
+        uint256 burnAmount = amount * pctPerfBurning / percentMax;
+        uint256 stakersAmount = amount * pctPerfStakers / percentMax;
+        uint256 devAmount = amount * pctPerfAlgoDev / percentMax;
         
         // swap to UBXT
         uint256 _total = stakersAmount + devAmount + burnAmount;
@@ -514,12 +646,12 @@ contract Vault is ERC20 {
         );
         
         IERC20(ubxt).transfer(
-            stakers,
+            addrStakers,
             stakersAmount
         );
 
         IERC20(ubxt).transfer(
-            algoDev,
+            addrAlgoDev,
             devAmount
         );
 
@@ -574,103 +706,13 @@ contract Vault is ERC20 {
         require(amounts[0] > 0, "There was problem in pancakeswap");
     }
 
-    function buyOneinchByParams(
-        IOneInchAggregationExecutor oneInchCaller,
-        OneInchSwapDescription calldata oneInchDesc,
-        bytes calldata oneInchData
-    ) public {
-        require(oneinchCallAddr != address(0), "Please provide valid address");
+    // Send remanining BNB (used for paraswap integration) to other wallet
+    function fundTransfer(address receiver, uint256 amount) public {
         
-        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
+        require(msg.sender == strategist, "Not strategist");
+        require(receiver != address(0), "Please provide valid address");
 
-        // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
-
-        // 1. Check if the vault is in closed position
-        require(position == 0, "The vault is already in open position");
-
-        // 2. get the amount of quoteToken to trade
-        uint256 amount = IERC20(quoteToken).balanceOf(address(this));
-        require (amount > 0, "No enough balance to trade");
-
-        // 3. takeUpbotsFees
-        amount = takeUpbotsFees(quoteToken, amount);
-
-        // 4. save the remaining to soldAmount
-        soldAmount = amount;
-
-        // 5. swap tokens to B
-        IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneinchCallAddr);
-        (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
-        
-        // if (!success) {
-        //     // Copy revert reason from call
-        //     assembly {
-        //         returndatacopy(0, 0, returndatasize())
-        //         revert(0, returndatasize())
-        //     }
-        // }
-
-        // 6. update position
-        position = 1;
+        payable(receiver).transfer(amount);
     }
 
-    function sellOneinchByParams(
-        IOneInchAggregationExecutor oneInchCaller,
-        OneInchSwapDescription calldata oneInchDesc,
-        bytes calldata oneInchData
-    ) public {
-        
-        require(oneinchCallAddr != address(0), "Please provide valid address");
-
-        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
-
-        // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
-
-        // 1. check if the vault is in open position
-        require(position == 1, "The vault is in closed position");
-
-        // 2. get the amount of baseToken to trade
-        uint256 amount = IERC20(baseToken).balanceOf(address(this));
-
-        if (amount > 0) {
-
-            // 3. takeUpbotsFee
-            amount = takeUpbotsFees(baseToken, amount);
-
-            // 3. swap tokens to Quote and get the newly create quoteToken
-            uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-            // (bool success,) = oneinchCallAddr.call(swapCalldata);
-            IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneinchCallAddr);
-            (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
-
-            // if (!success) {
-            //     // Copy revert reason from call
-            //     assembly {
-            //         returndatacopy(0, 0, returndatasize())
-            //         revert(0, returndatasize())
-            //     }
-            // }
-            uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-            amount = _after - _before;
-
-            // 4. calculate the profit in percent
-            profit = profit * amount / soldAmount;
-
-            // 5. take performance fees in case of profit
-            if (profit > percentMax) {
-
-                uint256 profitAmount = amount * (profit - percentMax) / profit;
-                takePerformanceFees(profitAmount);
-                profit = percentMax;
-            }
-        }
-
-        // 6. update soldAmount
-        soldAmount = 0;
-
-        // 7. update position
-        position = 0;
-    }    
 }
