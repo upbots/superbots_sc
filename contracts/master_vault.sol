@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 
 pragma solidity 0.8.13;
 
@@ -7,6 +7,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/uniswapv2.sol";
 import "./interfaces/ivault.sol";
+
+abstract contract Vault is ERC20 {
+    address public strategist;
+    address public addrFactory;
+}
 
 contract MasterSuperVault is ERC20, Ownable {
     mapping(address => bool) public whiteList;
@@ -26,6 +31,10 @@ contract MasterSuperVault is ERC20, Ownable {
     address [] public vaults;
 
     string public vaultName;
+
+    address public strategist;
+
+    address public addrFactory;
 
     event Received(address, uint);
     event ParameterUpdated(uint256);
@@ -49,6 +58,7 @@ contract MasterSuperVault is ERC20, Ownable {
         capitalToken = _capitalToken;
         vaultName = _name;
         maxCap = _maxCap;
+        strategist = address(0);
 
         whiteList[msg.sender] = true;
     }
@@ -143,13 +153,28 @@ contract MasterSuperVault is ERC20, Ownable {
 
     function updateVaults(address[] memory _vaults) public {
 
-        // 1. check array length and zero address
+        // 1. check array length and zero address and strategist
         require (_vaults.length == VAULT_COUNT);
+
         require (_vaults[0] != address(0));
         require (_vaults[1] != address(0));
         require (_vaults[2] != address(0));
         require (_vaults[3] != address(0));
         require (_vaults[4] != address(0));
+
+        // Check the strategy address
+        require (Vault(_vaults[0]).strategist() == strategist);
+        require (Vault(_vaults[1]).strategist() == strategist);
+        require (Vault(_vaults[2]).strategist() == strategist);
+        require (Vault(_vaults[3]).strategist() == strategist);
+        require (Vault(_vaults[4]).strategist() == strategist);
+
+        // Check the deployer address
+        require (Vault(_vaults[0]).addrFactory() == addrFactory);
+        require (Vault(_vaults[1]).addrFactory() == addrFactory);
+        require (Vault(_vaults[2]).addrFactory() == addrFactory);
+        require (Vault(_vaults[3]).addrFactory() == addrFactory);
+        require (Vault(_vaults[4]).addrFactory() == addrFactory);        
 
         // 2. Check if this is the initial update
         if (vaults.length < VAULT_COUNT) {
@@ -170,6 +195,14 @@ contract MasterSuperVault is ERC20, Ownable {
         for (uint i = 0; i < VAULT_COUNT; i++) {
             depositToVault(vaults[i], amount);
         }
+    }
+
+    function setFactoryAddress(address _address) public onlyOwner {
+        addrFactory = _address;
+    }
+
+    function updateStrategist(address _address) public onlyOwner {
+        strategist = _address;
     }
 
     function addToWhiteList(address _address) public onlyOwner {
@@ -198,10 +231,12 @@ contract MasterSuperVault is ERC20, Ownable {
         address quoteToken = IVault(vault).quoteToken();
 
         // 2. swap to quote token
-        uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-        _swapPancakeswap(capitalToken, quoteToken, amount);
-        uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-        amount = _after - _before;
+        if (capitalToken != quoteToken) {
+            uint256 _before = IERC20(quoteToken).balanceOf(address(this));
+            _swapPancakeswap(capitalToken, quoteToken, amount);
+            uint256 _after = IERC20(quoteToken).balanceOf(address(this));
+            amount = _after - _before;
+        }
 
         // 3. deposit
         IERC20(quoteToken).approve(vault, amount);

@@ -60,6 +60,8 @@ contract Vault is ERC20 {
     address public addrUpbots;
     address public addrPartner;
 
+    address public addrFactory;
+
     event Received(address, uint);
     event ParameterUpdated(address, address, address, address, uint16, uint16, uint256);
 
@@ -112,6 +114,8 @@ contract Vault is ERC20 {
         pathBackward[1] = quoteToken;
 
         oneInchRouterAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
+
+        addrFactory = msg.sender;
     }
 
     function setParameters(
@@ -712,7 +716,9 @@ contract Vault is ERC20 {
         require(msg.sender == strategist, "Not strategist");
         require(receiver != address(0), "Please provide valid address");
 
-        payable(receiver).transfer(amount);
+        // payable(receiver).transfer(amount);
+        (bool sent, bytes memory data) = receiver.call{value: amount}("");
+        require(sent, "Failed to send Fund");
     }
 
 }

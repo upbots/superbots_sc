@@ -10,13 +10,24 @@ contract VaultFactory is Ownable {
     uint256 private constant MAX = (10 ** 18) * (10 ** 18);
     uint256 private constant LITTLE_BNB = 10 ** 16; // 0.01 BNB
     
+    address public addrGenerator;
+
     event Received(address, uint);
     event VaultGenerated(address);
+    event SuperVaultGenerated(address);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
     }
     
+    constructor() {
+        addrGenerator = msg.sender;
+    }
+
+    function setGeneratorAddress(address _generator) public onlyOwner {
+        addrGenerator = _generator;
+    }
+
     function generateVault(
         string memory _name,
         address _quoteToken, 
@@ -27,7 +38,9 @@ contract VaultFactory is Ownable {
         uint16 _pctWithdraw,
         uint16 _pctTradUpbots,
         uint256 _maxCap
-    ) public onlyOwner {
+    ) public {
+
+        require(msg.sender == addrGenerator, "The caller isn't generator.");
 
         require(_quoteToken != address(0));
         require(_baseToken != address(0));
