@@ -1,0 +1,59 @@
+// percents
+pctDeposit
+pctWithdraw
+
+pctPerfBurning
+pctPerfStakers
+pctPerfAlgoDev
+pctPerfUpbots
+pctPerfPartner
+
+pctTradUpbots
+
+// addresses
+addrDeposit
+addrWithdraw
+addrBurning
+addrStakers
+addrAlgoDev
+addrUpbots
+addrPartner
+
+
+//UPBOTS/////////////////////////////////
+
+pctPerfBurning: 250 (2.5%)  constant
+pctPerfStakers: 250 (2.5%)  constant
+pctPerfAlgoDev: 500 (5%)    constant
+pctPerfUpbots:  500 (5%)    constant
+
+pctTradUpbots:  8 (0.08%)   constant
+
+addrBurning
+addrStakers
+addrAlgoDev
+addrUpbots
+addrPartner
+
+//PSR/////////////////////////////////
+pctDeposit: 450 (4.5%)	variable
+pctWithdraw: 100 (1%)	variable
+
+pctPerfBurning: 250 (2.5%)  constant
+pctPerfStakers: 250 (2.5%)  constant
+pctPerfAlgoDev: 500 (5%)    constant
+pctPerfPartner:  1000 (10%)    constant
+
+pctTradUpbots:  8 (0.08%)   constant
+
+addrDeposit
+addrWithdraw
+
+addrBurning
+addrStakers
+addrAlgoDev
+addrUpbots
+addrPartner
+
+
+

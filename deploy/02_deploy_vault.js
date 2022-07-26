@@ -6,7 +6,6 @@ const param = params[1]
 
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
-
 const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades, run }) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
@@ -19,10 +18,14 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
       param.tokenA,
       param.tokenB,
       param.strategist,
-      param.percentDev,
-      param.company,
+      // param.percentDev,
       param.stakers,
-      param.algoDev,
+      // param.algoDev,
+      // param.company,
+      // param.partner,
+      param.percentDeposit,
+      param.percentWithdraw,
+      param.percentTradUpbots,
       param.maxCap
     ],
   })
@@ -40,10 +43,14 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
           param.tokenA,
           param.tokenB,
           param.strategist,
-          param.percentDev,
-          param.company,
+          // param.percentDev,
           param.stakers,
-          param.algoDev,
+          // param.algoDev,
+          // param.company,
+          // param.partner,
+          param.percentDeposit,
+          param.percentWithdraw,
+          param.percentTradUpbots,          
           param.maxCap
         ],
         contract: "contracts/vault.sol:Vault"
@@ -60,4 +67,4 @@ module.exports.tags = [contractName];
 // npx hardhat deploy --network ropsten --tags Vault
 
 
-// bsc: 0xa25CDc2152908dBfd69cFC20734F19ade9a06b03
+// bsc: 0x6c4ccD5b9f9fb5364848489E651D22d2B33d91C4, 0xa25CDc2152908dBfd69cFC20734F19ade9a06b03

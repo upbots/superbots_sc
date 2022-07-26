@@ -5,6 +5,10 @@ const { sleep }  = require("../utils/sleep")
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
 
+const name="MASTER SUPER VAULT";
+const capitalToken = "0xe9e7cea3dedca5984780bafc599bd69add087d56"; // BUSD (mainnet)
+const maxCap = "1000000000000000000000000000000000000";
+
 const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades, run }) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
@@ -12,7 +16,7 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
   console.log(`${contractName} deploying...`);
   const contract = await deploy(`${contractName}`, {
     from: deployer,
-    args: [],
+    args: [name, capitalToken, maxCap],
   })
   console.log(`${contractName} address:`, contract.address);
 
@@ -21,7 +25,7 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
     await sleep(VERIFY_DELAY);
     await run("verify:verify", {
         address: contract.address,
-        constructorArguments: [],
+        constructorArguments: [name, capitalToken, maxCap],
         contract: "contracts/master_vault.sol:MasterSuperVault"
     })
   }
@@ -37,3 +41,4 @@ module.exports.tags = [contractName];
 
 
 // bsc: 
+// 0x00B8f6a25F69820146c6cE7D748A3450537D93D5 (07.26)
