@@ -8,10 +8,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/uniswapv2.sol";
 import "./interfaces/ivault.sol";
 
-abstract contract Vault is ERC20 {
-    address public strategist;
-    address public addrFactory;
-}
 
 contract MasterSuperVault is ERC20, Ownable {
     mapping(address => bool) public whiteList;
@@ -77,7 +73,9 @@ contract MasterSuperVault is ERC20, Ownable {
         
         require(receiver != address(0));
 
-        payable(receiver).transfer(amount);
+        // payable(receiver).transfer(amount);
+        (bool sent, bytes memory data) = receiver.call{value: amount}("");
+        require(sent, "Failed to send Fund");
     }
 
     function poolSize() public view returns (uint256) {
@@ -163,18 +161,18 @@ contract MasterSuperVault is ERC20, Ownable {
         require (_vaults[4] != address(0));
 
         // Check the strategy address
-        require (Vault(_vaults[0]).strategist() == strategist);
-        require (Vault(_vaults[1]).strategist() == strategist);
-        require (Vault(_vaults[2]).strategist() == strategist);
-        require (Vault(_vaults[3]).strategist() == strategist);
-        require (Vault(_vaults[4]).strategist() == strategist);
+        require (IVault(_vaults[0]).strategist() == strategist);
+        require (IVault(_vaults[1]).strategist() == strategist);
+        require (IVault(_vaults[2]).strategist() == strategist);
+        require (IVault(_vaults[3]).strategist() == strategist);
+        require (IVault(_vaults[4]).strategist() == strategist);
 
         // Check the deployer address
-        require (Vault(_vaults[0]).addrFactory() == addrFactory);
-        require (Vault(_vaults[1]).addrFactory() == addrFactory);
-        require (Vault(_vaults[2]).addrFactory() == addrFactory);
-        require (Vault(_vaults[3]).addrFactory() == addrFactory);
-        require (Vault(_vaults[4]).addrFactory() == addrFactory);        
+        require (IVault(_vaults[0]).addrFactory() == addrFactory);
+        require (IVault(_vaults[1]).addrFactory() == addrFactory);
+        require (IVault(_vaults[2]).addrFactory() == addrFactory);
+        require (IVault(_vaults[3]).addrFactory() == addrFactory);
+        require (IVault(_vaults[4]).addrFactory() == addrFactory);        
 
         // 2. Check if this is the initial update
         if (vaults.length < VAULT_COUNT) {
@@ -278,7 +276,11 @@ contract MasterSuperVault is ERC20, Ownable {
         address _to,
         uint256 _amount
     ) internal {
-        require(_to != address(0));
+        require(_from != address(0) && _to != address(0));
+
+        if (_from == _to) {
+            return;
+        }
 
         // Swap with uniswap
         IERC20(_from).approve(pancakeRouter, 0);

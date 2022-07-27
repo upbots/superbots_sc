@@ -2,6 +2,8 @@
 pragma solidity 0.8.13;
 
 interface IVault {
+    function strategist() external view returns (address);
+    function addrFactory() external view returns (address);
     
     function poolSize() external view returns (uint256);
     function depositQuote(uint256 amount) external;
