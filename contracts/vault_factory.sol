@@ -25,6 +25,7 @@ contract VaultFactory is Ownable {
     }
 
     function setGeneratorAddress(address _generator) public onlyOwner {
+        require(_generator != address(0),"generator address zero");
         addrGenerator = _generator;
     }
 

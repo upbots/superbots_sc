@@ -199,10 +199,12 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setFactoryAddress(address _address) public onlyOwner {
+        require(_address != address(0),"factory address zero");
         addrFactory = _address;
     }
 
     function updateStrategist(address _address) public onlyOwner {
+        require(_address != address(0),"strategist address zero");
         strategist = _address;
     }
 
