@@ -5,11 +5,13 @@ pragma solidity 0.8.13;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
 import "./interfaces/uniswapv2.sol";
 import "./interfaces/ivault.sol";
 
 
-contract MasterSuperVault is ERC20, Ownable {
+contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     mapping(address => bool) public whiteList;
 
     address public capitalToken;
@@ -101,7 +103,7 @@ contract MasterSuperVault is ERC20, Ownable {
         return _poolSize;
     }
 
-    function deposit(uint256 amount) public {
+    function deposit(uint256 amount) public nonReentrant {
 
         require (vaults.length == VAULT_COUNT, "vaults are not updated yet.");
 
@@ -129,7 +131,7 @@ contract MasterSuperVault is ERC20, Ownable {
         _mint(msg.sender, shares);
     }
 
-    function withdraw(uint256 shares) public  {
+    function withdraw(uint256 shares) public nonReentrant {
 
         require (vaults.length == VAULT_COUNT);
         require (shares <= balanceOf(msg.sender), "invalid share amount");

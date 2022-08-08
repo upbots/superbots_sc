@@ -229,7 +229,7 @@ contract Vault is ERC20 {
         position = 0;
     }
 
-    function depositQuote(uint256 amount) public {
+    function depositQuote(uint256 amount) public nonReentrant {
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -267,7 +267,7 @@ contract Vault is ERC20 {
         _mint(msg.sender, shares);
     }
 
-    function depositBase(uint256 amount) public {
+    function depositBase(uint256 amount) public nonReentrant {
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -282,7 +282,7 @@ contract Vault is ERC20 {
         amount = _after - _before; // Additional check for deflationary tokens
 
         // 3. pay deposit fees
-        amount = takeWithdrawFees(baseToken, amount);
+        amount = takeDepositFees(baseToken, amount);
 
         _pool = _before;
         // 4. swap Base to Quote if position is closed
@@ -310,7 +310,7 @@ contract Vault is ERC20 {
         _mint(msg.sender, shares);
     }
 
-    function withdraw(uint256 shares) public  {
+    function withdraw(uint256 shares) public nonReentrant  {
 
         require (shares <= balanceOf(msg.sender), "invalid share amount");
 
@@ -351,7 +351,7 @@ contract Vault is ERC20 {
 
     }
 
-    function buy() public {
+    function buy() public nonReentrant {
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");
 
@@ -375,7 +375,7 @@ contract Vault is ERC20 {
         position = 1;
     }
 
-    function sell() public {
+    function sell() public nonReentrant {
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");
 
@@ -419,7 +419,7 @@ contract Vault is ERC20 {
         IOneInchAggregationExecutor oneInchCaller,
         OneInchSwapDescription calldata oneInchDesc,
         bytes calldata oneInchData
-    ) public {
+    ) public nonReentrant {
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");
 
@@ -461,7 +461,7 @@ contract Vault is ERC20 {
         IOneInchAggregationExecutor oneInchCaller,
         OneInchSwapDescription calldata oneInchDesc,
         bytes calldata oneInchData
-    ) public {
+    ) public nonReentrant {
         
         // 0. check whitelist
         require(isWhitelisted(msg.sender), "Not whitelisted");
