@@ -3,8 +3,8 @@
 pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/uniswapv2.sol";
@@ -12,6 +12,7 @@ import "./interfaces/ivault.sol";
 
 
 contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
     mapping(address => bool) public whiteList;
 
     address public capitalToken;
@@ -76,7 +77,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         require(receiver != address(0));
 
         // payable(receiver).transfer(amount);
-        (bool sent, bytes memory data) = receiver.call{value: amount}("");
+        (bool sent, ) = receiver.call{value: amount}("");
         require(sent, "Failed to send Fund");
     }
 
@@ -111,7 +112,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         require (maxCap == 0 || totalSupply() + amount < maxCap, "The vault reached the max cap");
 
         // 2. receive funds
-        IERC20(capitalToken).transferFrom(msg.sender, address(this), amount);
+        IERC20(capitalToken).safeTransferFrom(msg.sender, address(this), amount);
         amount = IERC20(capitalToken).balanceOf(address(this));
 
         // 3. divide, swap to each quote token and deposit to the vaults
@@ -144,7 +145,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
 
         // 2. transfer capital to the user
         if (IERC20(capitalToken).balanceOf(address(this)) > 0) {
-            IERC20(capitalToken).transfer(msg.sender, IERC20(capitalToken).balanceOf(address(this)));
+            IERC20(capitalToken).safeTransfer(msg.sender, IERC20(capitalToken).balanceOf(address(this)));
         }
 
         // 3. burn share tokens

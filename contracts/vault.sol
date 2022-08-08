@@ -3,13 +3,16 @@
 pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interfaces/uniswapv2.sol";
 import "./interfaces/iparaswap.sol";
 
 import "./interfaces/oneinch.sol";
 
-contract Vault is ERC20 {
+contract Vault is ERC20, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     string public vaultName;
     bool public isForPartner;
 
@@ -237,7 +240,7 @@ contract Vault is ERC20 {
 
         // 2. transfer quote from sender to this vault
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-        IERC20(quoteToken).transferFrom(msg.sender, address(this), amount);
+        IERC20(quoteToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
@@ -277,7 +280,7 @@ contract Vault is ERC20 {
 
         // 2. transfer base from sender to this vault
         uint256 _before = IERC20(baseToken).balanceOf(address(this));
-        IERC20(baseToken).transferFrom(msg.sender, address(this), amount);
+        IERC20(baseToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(baseToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
@@ -320,7 +323,7 @@ contract Vault is ERC20 {
             if (amountQuote > 0) {
                 // pay withdraw fees
                 amountQuote = takeWithdrawFees(quoteToken, amountQuote);
-                IERC20(quoteToken).transfer(msg.sender, amountQuote);
+                IERC20(quoteToken).safeTransfer(msg.sender, amountQuote);
             }
         }
 
@@ -342,7 +345,7 @@ contract Vault is ERC20 {
             if (amountBase > 0) {
                 // pay withdraw fees
                 amountBase = takeWithdrawFees(baseToken, amountBase);
-                IERC20(baseToken).transfer(msg.sender, amountBase);
+                IERC20(baseToken).safeTransfer(msg.sender, amountBase);
             }
         }
 
@@ -443,7 +446,7 @@ contract Vault is ERC20 {
 
         // 5. swap tokens to B
         IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
-        (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
+        (uint256 returnAmount, ) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
         
         if (returnAmount == 0) {
             // Copy revert reason from call
@@ -485,7 +488,7 @@ contract Vault is ERC20 {
         // 3. swap tokens to Quote and get the newly create quoteToken
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
-        (uint256 returnAmount, uint256 gasLeft) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
+        (uint256 returnAmount, ) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
 
         if (returnAmount == 0) {
             // Copy revert reason from call
@@ -526,7 +529,7 @@ contract Vault is ERC20 {
         }
 
         uint256 fees = amount * pctDeposit / percentMax;
-        IERC20(token).transfer(addrPartner, fees);
+        IERC20(token).safeTransfer(addrPartner, fees);
         return amount - fees;
     }
     
@@ -541,7 +544,7 @@ contract Vault is ERC20 {
         }
 
         uint256 fees = amount * pctWithdraw / percentMax;
-        IERC20(token).transfer(addrPartner, fees);
+        IERC20(token).safeTransfer(addrPartner, fees);
         return amount - fees;
     }
 
@@ -561,7 +564,7 @@ contract Vault is ERC20 {
         uint256 ubxtAmt = _after - _before;
 
         // transfer to company wallet
-        IERC20(ubxt).transfer(addrUpbots, ubxtAmt);
+        IERC20(ubxt).safeTransfer(addrUpbots, ubxtAmt);
         
         // return remaining token amount 
         return amount - fee;
@@ -595,22 +598,22 @@ contract Vault is ERC20 {
         burnAmount = ubxtAmt - stakersAmount - devAmount - companyAmount;
 
         // Transfer
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             burnAddress, // burn
             burnAmount
         );
         
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             addrStakers, // stakers
             stakersAmount
         );
 
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             addrAlgoDev, // algodev
             devAmount
         );
 
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             addrCompany, // company (upbots or partner)
             companyAmount
         );
@@ -644,17 +647,17 @@ contract Vault is ERC20 {
         burnAmount = ubxtAmt - stakersAmount - devAmount;
 
         // Transfer
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             address(0), // burn
             burnAmount
         );
         
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             addrStakers,
             stakersAmount
         );
 
-        IERC20(ubxt).transfer(
+        IERC20(ubxt).safeTransfer(
             addrAlgoDev,
             devAmount
         );
@@ -717,7 +720,7 @@ contract Vault is ERC20 {
         require(receiver != address(0), "Please provide valid address");
 
         // payable(receiver).transfer(amount);
-        (bool sent, bytes memory data) = receiver.call{value: amount}("");
+        (bool sent, ) = receiver.call{value: amount}("");
         require(sent, "Failed to send Fund");
     }
 

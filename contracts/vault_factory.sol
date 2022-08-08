@@ -70,7 +70,7 @@ contract VaultFactory is Ownable {
 
         // 5. send some bnb for paraswap call
         // payable(newVault).transfer(LITTLE_BNB);
-        (bool sent, bytes memory data) = newVault.call{value: LITTLE_BNB}("");
+        (bool sent, ) = address(newVault).call{value: LITTLE_BNB}("");
         require(sent, "Failed to send Fund");
 
         // 6. emit event
