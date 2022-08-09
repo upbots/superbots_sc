@@ -15,6 +15,7 @@ contract VaultFactory is Ownable {
     event Received(address, uint);
     event VaultGenerated(address);
     event SuperVaultGenerated(address);
+    event GeneratorAddressUpdated(address);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
@@ -27,6 +28,7 @@ contract VaultFactory is Ownable {
     function setGeneratorAddress(address _generator) public onlyOwner {
         require(_generator != address(0),"generator address zero");
         addrGenerator = _generator;
+        emit GeneratorAddressUpdated(_generator);
     }
 
     function generateVault(
@@ -43,11 +45,11 @@ contract VaultFactory is Ownable {
 
         require(msg.sender == addrGenerator, "The caller isn't generator.");
 
-        require(_quoteToken != address(0));
-        require(_baseToken != address(0));
-        require(_strategist != address(0));
+        require(_quoteToken != address(0), "_quoteToken zero address");
+        require(_baseToken != address(0), "_baseToken zero address");
+        require(_strategist != address(0), "_strategist zero address");
 
-        require(_addrStakers != address(0));
+        require(_addrStakers != address(0), "_addrStakers zero address");
 
         require (address(this).balance > LITTLE_BNB, "Put some BNB to this smart contract to give to the generated vaults");
         
@@ -63,18 +65,16 @@ contract VaultFactory is Ownable {
             _pctTradUpbots,
             _maxCap);
         
-        // 3. allow tokens for oneinch token transfer proxy
-        newVault.approveTokensForOneinch(0x1111111254fb6c44bAC0beD2854e76F90643097d, MAX);
 
-        // 4. set strategist
+        // 2. set strategist
         newVault.setStrategist(_strategist);
 
-        // 5. send some bnb for paraswap call
+        // 3. send some bnb for paraswap call
         // payable(newVault).transfer(LITTLE_BNB);
         (bool sent, ) = address(newVault).call{value: LITTLE_BNB}("");
         require(sent, "Failed to send Fund");
 
-        // 6. emit event
+        // 4. emit event
         emit VaultGenerated(address(newVault));
     }
 }

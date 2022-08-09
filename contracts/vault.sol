@@ -4,6 +4,7 @@ pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interfaces/uniswapv2.sol";
 import "./interfaces/iparaswap.sol";
@@ -12,12 +13,13 @@ import "./interfaces/oneinch.sol";
 
 contract Vault is ERC20, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using SafeMath for uint256;
 
     string public vaultName;
     bool public isForPartner;
 
-    address public quoteToken;
-    address public baseToken;
+    address public immutable quoteToken;
+    address public immutable baseToken;
 
     address public strategist;
     mapping(address => bool) public whiteList;
@@ -29,9 +31,8 @@ contract Vault is ERC20, ReentrancyGuard {
 
     // path backward for the pancake
     address[] private pathBackward;
-
-    // 1inch
-    address public oneInchRouterAddr;
+        
+    address public constant oneInchRouterAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
 
     address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
 
@@ -41,6 +42,10 @@ contract Vault is ERC20, ReentrancyGuard {
 
     address public constant ubxt = 0xBbEB90cFb6FAFa1F69AA130B7341089AbeEF5811; // mainnet
 
+    uint256 public constant pancakeswapSlippage = 10;
+
+    uint256 private constant MAX = (10 ** 18) * (10 ** 18);
+        
     uint256 public constant SWAP_MIN = 10 ** 6;
 
     uint16 public constant percentMax = 10000;
@@ -66,7 +71,13 @@ contract Vault is ERC20, ReentrancyGuard {
     address public addrFactory;
 
     event Received(address, uint);
+    event FundTransfer(address, uint256);
     event ParameterUpdated(address, address, address, address, uint16, uint16, uint256);
+    event StrategistAddressUpdated(address);
+    event PartnerAddressUpdated(address);
+    event WhiteListAdded(address);
+    event WhiteListRemoved(address);
+    event TradeDone(uint256, uint256, uint256, uint256);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
@@ -88,18 +99,22 @@ contract Vault is ERC20, ReentrancyGuard {
             string(abi.encodePacked("xUBXT_", _name))
         )
     {
-        require(_quoteToken != address(0), "Please provide valid address");
-        require(_baseToken != address(0), "Please provide valid address");
-        require(_strategist != address(0), "Please provide valid address");
-        require(_addrStakers != address(0), "Please provide valid address");
+        require(_quoteToken != address(0), "_quoteToken zero address");
+        require(_baseToken != address(0), "_baseToken zero address");
+        require(_strategist != address(0), "_strategist zero address");
+        require(_addrStakers != address(0), "_addrStakers zero address");
+
+        require(_pctDeposit < percentMax, "_pctDeposit not valid");
+        require(_pctWithdraw < percentMax, "_pctWithdraw not valid");
+        require(_pctTradUpbots < percentMax, "_pctTradUpbots not valid");
 
         vaultName = _name;
 
         addrStakers = _addrStakers;
         
-        pctDeposit = _pctDeposit < percentMax ? _pctDeposit : pctDeposit;
-        pctWithdraw = _pctWithdraw < percentMax ? _pctWithdraw : pctWithdraw;
-        pctTradUpbots = _pctTradUpbots < percentMax ? _pctTradUpbots : pctTradUpbots;
+        pctDeposit = _pctDeposit;
+        pctWithdraw = _pctWithdraw;
+        pctTradUpbots = _pctTradUpbots;
 
         maxCap = _maxCap;
 
@@ -116,9 +131,10 @@ contract Vault is ERC20, ReentrancyGuard {
         pathBackward[0] = baseToken;
         pathBackward[1] = quoteToken;
 
-        oneInchRouterAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
-
         addrFactory = msg.sender;
+        
+        // allow tokens for oneinch token transfer proxy
+        approveTokensForOneinch();
     }
 
     function setParameters(
@@ -130,19 +146,22 @@ contract Vault is ERC20, ReentrancyGuard {
         uint16 _pctPerfPartner,
         uint256 _maxCap
     ) public  {
-        
-        require(_addrUpbots != address(0), "Please provide valid address");
-        require(_addrStakers != address(0), "Please provide valid address");
-        require(_addrAlgoDev != address(0), "Please provide valid address");
         require(msg.sender == strategist, "Not strategist");
+
+        require(_addrStakers != address(0), "_addrStakers zero address");
+        require(_addrAlgoDev != address(0), "_addrAlgoDev zero address");
+        require(_addrUpbots != address(0), "_addrUpbots zero address");
+
+        require(_pctPerfAlgoDev < percentMax, "_pctPerfAlgoDev not valid");
+        require(_pctPerfPartner < percentMax, "_pctPerfPartner not valid");
 
         addrStakers = _addrStakers;
         addrAlgoDev = _addrAlgoDev;
         addrUpbots = _addrUpbots;
         addrPartner = _addrPartner;
         
-        pctPerfAlgoDev = _pctPerfAlgoDev < percentMax ? _pctPerfAlgoDev : pctPerfAlgoDev;
-        pctPerfPartners = _pctPerfPartner  < percentMax ? _pctPerfPartner : pctPerfPartners;
+        pctPerfAlgoDev = _pctPerfAlgoDev;
+        pctPerfPartners = _pctPerfPartner;
 
         maxCap = _maxCap;
 
@@ -157,42 +176,35 @@ contract Vault is ERC20, ReentrancyGuard {
     }
 
     function addToWhiteList(address _address) public {
+        require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = true;
+        emit WhiteListAdded(_address);
     }
 
     function removeFromWhiteList(address _address) public {
+        require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = false;
-    }
-
-    function isWhitelisted(address _address) public view returns(bool) {
-        return whiteList[_address];
+        emit WhiteListRemoved(_address);
     }
 
     function setStrategist(address _address) public {
-        require(_address != address(0), "Please provide valid address");
+        require(_address != address(0), "strategist address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = true;
         strategist = _address;
+        emit StrategistAddressUpdated(_address);
     }
 
     function setPartnerAddress(address _address) public {
-        require(_address != address(0), "Please provide valid address");
+        require(_address != address(0), "partner address zero");
         require(msg.sender == strategist, "Not strategist");
         addrPartner = _address;
-    }
-
-    function approveTokensForOneinch(address oneinch, uint256 amount) public {
-
-        require(msg.sender == strategist, "Not strategist");
-        require(oneinch != address(0), "Please provide valid address");
-        assert(IERC20(quoteToken).approve(oneinch, amount));
-        assert(IERC20(baseToken).approve(oneinch, amount));
+        emit PartnerAddressUpdated(_address);
     }
 
     function resetTrade() public {
-        
         require(msg.sender == strategist, "Not strategist");
 
         // 1. swap all baseToken to quoteToken
@@ -356,7 +368,7 @@ contract Vault is ERC20, ReentrancyGuard {
 
     function buy() public nonReentrant {
         // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
+        require(whiteList[msg.sender], "Not whitelisted");
 
         // 1. Check if the vault is in closed position
         require(position == 0, "The vault is already in open position");
@@ -380,7 +392,7 @@ contract Vault is ERC20, ReentrancyGuard {
 
     function sell() public nonReentrant {
         // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
+        require(whiteList[msg.sender], "Not whitelisted");
 
         // 1. check if the vault is in open position
         require(position == 1, "The vault is in closed position");
@@ -424,7 +436,7 @@ contract Vault is ERC20, ReentrancyGuard {
         bytes calldata oneInchData
     ) public nonReentrant {
         // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
+        require(whiteList[msg.sender], "Not whitelisted");
 
         require(oneInchRouterAddr != address(0), "Please provide valid address");
         require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
@@ -439,7 +451,9 @@ contract Vault is ERC20, ReentrancyGuard {
         require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
 
         // 3. takeTradingFees
+        uint256 tradeAmount = amount;
         amount = takeTradingFees(quoteToken, amount);
+        uint256 feeAmount = tradeAmount - amount;
 
         // 4. save the remaining to soldAmount
         soldAmount = amount;
@@ -458,6 +472,9 @@ contract Vault is ERC20, ReentrancyGuard {
 
         // 6. update position
         position = 1;
+
+        // emit event        
+        emit TradeDone(position, tradeAmount, feeAmount, profit);
     }
 
     function sellOneinchByParams(
@@ -467,7 +484,7 @@ contract Vault is ERC20, ReentrancyGuard {
     ) public nonReentrant {
         
         // 0. check whitelist
-        require(isWhitelisted(msg.sender), "Not whitelisted");
+        require(whiteList[msg.sender], "Not whitelisted");
 
         require(oneInchRouterAddr != address(0), "Please provide valid address");
         require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
@@ -483,9 +500,11 @@ contract Vault is ERC20, ReentrancyGuard {
         require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
 
         // 3. takeUpbotsFee
+        uint256 tradeAmount = amount;
         amount = takeTradingFees(baseToken, amount);
+        uint256 feeAmount = tradeAmount - amount;
 
-        // 3. swap tokens to Quote and get the newly create quoteToken
+        // 4. swap tokens to Quote and get the newly create quoteToken
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
         (uint256 returnAmount, ) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
@@ -500,10 +519,10 @@ contract Vault is ERC20, ReentrancyGuard {
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before;
 
-        // 4. calculate the profit in percent
+        // 5. calculate the profit in percent
         profit = profit * amount / soldAmount;
 
-        // 5. take performance fees in case of profit
+        // 6. take performance fees in case of profit
         if (profit > percentMax) {
 
             uint256 profitAmount = amount * (profit - percentMax) / profit;
@@ -511,11 +530,14 @@ contract Vault is ERC20, ReentrancyGuard {
             profit = percentMax;
         }
 
-        // 6. update soldAmount
+        // 7. update soldAmount
         soldAmount = 0;
 
-        // 7. update position
+        // 8. update position
         position = 0;
+
+        // emit event
+        emit TradeDone(position, tradeAmount, feeAmount, profit);
     }
 
     function takeDepositFees(address token, uint256 amount) private returns(uint256) {
@@ -678,12 +700,17 @@ contract Vault is ERC20, ReentrancyGuard {
         return amounts[amounts.length - 1];
     }
     
+    function approveTokensForOneinch() internal {
+        assert(IERC20(quoteToken).approve(oneInchRouterAddr, MAX));
+        assert(IERC20(baseToken).approve(oneInchRouterAddr, MAX));
+    }
+
     function _swapPancakeswap(
         address _from,
         address _to,
         uint256 _amount
     ) internal {
-        require(_to != address(0));
+        require(_to != address(0), "_to zero address");
 
         // Swap with uniswap
         assert(IERC20(_from).approve(pancakeRouter, 0));
@@ -702,9 +729,15 @@ contract Vault is ERC20, ReentrancyGuard {
             path[2] = _to;
         }
 
+        uint256[] memory amountOutMins = UniswapRouterV2(pancakeRouter).getAmountsOut(
+            _amount,
+            path
+        );
+        uint256 amountOutMin = amountOutMins[path.length -1].mul(100 - pancakeswapSlippage).div(100);
+
         uint256[] memory amounts = UniswapRouterV2(pancakeRouter).swapExactTokensForTokens(
             _amount,
-            0,
+            amountOutMin,
             path,
             address(this),
             block.timestamp + 60
@@ -722,6 +755,8 @@ contract Vault is ERC20, ReentrancyGuard {
         // payable(receiver).transfer(amount);
         (bool sent, ) = receiver.call{value: amount}("");
         require(sent, "Failed to send Fund");
+
+        emit FundTransfer(receiver, amount);
     }
 
 }
