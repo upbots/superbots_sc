@@ -242,7 +242,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         }
 
         // 3. deposit
-        IERC20(quoteToken).approve(vault, amount);
+        assert(IERC20(quoteToken).approve(vault, amount));
         IVault(vault).depositQuote(amount);
     }
 
@@ -288,8 +288,8 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         }
 
         // Swap with uniswap
-        IERC20(_from).approve(pancakeRouter, 0);
-        IERC20(_from).approve(pancakeRouter, _amount);
+        assert(IERC20(_from).approve(pancakeRouter, 0));
+        assert(IERC20(_from).approve(pancakeRouter, _amount));
 
         address[] memory path;
 

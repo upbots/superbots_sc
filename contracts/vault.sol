@@ -187,8 +187,8 @@ contract Vault is ERC20, ReentrancyGuard {
 
         require(msg.sender == strategist, "Not strategist");
         require(oneinch != address(0), "Please provide valid address");
-        IERC20(quoteToken).approve(oneinch, amount);
-        IERC20(baseToken).approve(oneinch, amount);
+        assert(IERC20(quoteToken).approve(oneinch, amount));
+        assert(IERC20(baseToken).approve(oneinch, amount));
     }
 
     function resetTrade() public {
@@ -686,8 +686,8 @@ contract Vault is ERC20, ReentrancyGuard {
         require(_to != address(0));
 
         // Swap with uniswap
-        IERC20(_from).approve(pancakeRouter, 0);
-        IERC20(_from).approve(pancakeRouter, _amount);
+        assert(IERC20(_from).approve(pancakeRouter, 0));
+        assert(IERC20(_from).approve(pancakeRouter, _amount));
 
         address[] memory path;
 
