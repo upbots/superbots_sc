@@ -74,7 +74,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
 
     function setParameters(
         uint256 _maxCap
-    ) public onlyOwner {
+    ) external onlyOwner {
         
         maxCap = _maxCap;
 
@@ -82,7 +82,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Send remanining BNB (used for paraswap integration) to other wallet
-    function fundTransfer(address receiver, uint256 amount) public onlyOwner {
+    function fundTransfer(address receiver, uint256 amount) external onlyOwner {
         
         require(receiver != address(0), "receiver zero address");
 
@@ -116,7 +116,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         return _poolSize;
     }
 
-    function deposit(uint256 amount) public nonReentrant {
+    function deposit(uint256 amount) external nonReentrant {
 
         require (vaults.length == VAULT_COUNT, "vaults are not updated yet.");
 
@@ -144,7 +144,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         _mint(msg.sender, shares);
     }
 
-    function withdraw(uint256 shares) public nonReentrant {
+    function withdraw(uint256 shares) external nonReentrant {
 
         require (vaults.length == VAULT_COUNT, "vaults length isn't VAULT_COUNT");
         require (shares <= balanceOf(msg.sender), "invalid share amount");
@@ -164,7 +164,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         _burn(msg.sender, shares);
     }
 
-    function updateVaults(address[] memory _vaults) public {
+    function updateVaults(address[] memory _vaults) external {
 
         // 1. check array length and zero address and strategist
         require (_vaults.length == VAULT_COUNT, "vaults length isn't VAULT_COUNT");
@@ -210,25 +210,25 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
-    function setFactoryAddress(address _address) public onlyOwner {
+    function setFactoryAddress(address _address) external onlyOwner {
         require(_address != address(0),"factory address zero");
         addrFactory = _address;
         emit FactoryAddressUpdated(_address);
     }
 
-    function updateStrategist(address _address) public onlyOwner {
+    function updateStrategist(address _address) external onlyOwner {
         require(_address != address(0),"strategist address zero");
         strategist = _address;
         emit StrategistAddressUpdated(_address);
     }
 
-    function addToWhiteList(address _address) public onlyOwner {
+    function addToWhiteList(address _address) external onlyOwner {
         require(_address != address(0),"white list address zero");
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
-    function removeFromWhiteList(address _address) public onlyOwner {
+    function removeFromWhiteList(address _address) external onlyOwner {
         require(_address != address(0),"white list address zero");
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);

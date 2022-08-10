@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./vault.sol";
 
 contract VaultFactory is Ownable {
-
     uint256 private constant MAX = (10 ** 18) * (10 ** 18);
     uint256 private constant LITTLE_BNB = 10 ** 16; // 0.01 BNB
     
@@ -25,7 +24,7 @@ contract VaultFactory is Ownable {
         addrGenerator = msg.sender;
     }
 
-    function setGeneratorAddress(address _generator) public onlyOwner {
+    function setGeneratorAddress(address _generator) external onlyOwner {
         require(_generator != address(0),"generator address zero");
         addrGenerator = _generator;
         emit GeneratorAddressUpdated(_generator);
@@ -41,8 +40,7 @@ contract VaultFactory is Ownable {
         uint16 _pctWithdraw,
         uint16 _pctTradUpbots,
         uint256 _maxCap
-    ) public {
-
+    ) external {
         require(msg.sender == addrGenerator, "The caller isn't generator.");
 
         require(_quoteToken != address(0), "_quoteToken zero address");

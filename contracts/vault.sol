@@ -145,7 +145,7 @@ contract Vault is ERC20, ReentrancyGuard {
         uint16 _pctPerfAlgoDev,
         uint16 _pctPerfPartner,
         uint256 _maxCap
-    ) public  {
+    ) external {
         require(msg.sender == strategist, "Not strategist");
 
         require(_addrStakers != address(0), "_addrStakers zero address");
@@ -175,21 +175,21 @@ contract Vault is ERC20, ReentrancyGuard {
             (IERC20(quoteToken).balanceOf(address(this)) + _calculateQuoteFromBase());
     }
 
-    function addToWhiteList(address _address) public {
+    function addToWhiteList(address _address) external {
         require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
-    function removeFromWhiteList(address _address) public {
+    function removeFromWhiteList(address _address) external {
         require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);
     }
 
-    function setStrategist(address _address) public {
+    function setStrategist(address _address) external {
         require(_address != address(0), "strategist address zero");
         require(msg.sender == strategist, "Not strategist");
         whiteList[_address] = true;
@@ -197,14 +197,14 @@ contract Vault is ERC20, ReentrancyGuard {
         emit StrategistAddressUpdated(_address);
     }
 
-    function setPartnerAddress(address _address) public {
+    function setPartnerAddress(address _address) external {
         require(_address != address(0), "partner address zero");
         require(msg.sender == strategist, "Not strategist");
         addrPartner = _address;
         emit PartnerAddressUpdated(_address);
     }
 
-    function resetTrade() public {
+    function resetTrade() external {
         require(msg.sender == strategist, "Not strategist");
 
         // 1. swap all baseToken to quoteToken
@@ -221,7 +221,7 @@ contract Vault is ERC20, ReentrancyGuard {
         position = 0;
     }
 
-    function resetTradeOneinch(bytes memory swapCalldata) public {
+    function resetTradeOneinch(bytes memory swapCalldata) external {
         
         require(msg.sender == strategist, "Not strategist");
 
@@ -244,7 +244,7 @@ contract Vault is ERC20, ReentrancyGuard {
         position = 0;
     }
 
-    function depositQuote(uint256 amount) public nonReentrant {
+    function depositQuote(uint256 amount) external nonReentrant {
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -282,7 +282,7 @@ contract Vault is ERC20, ReentrancyGuard {
         _mint(msg.sender, shares);
     }
 
-    function depositBase(uint256 amount) public nonReentrant {
+    function depositBase(uint256 amount) external nonReentrant {
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -325,7 +325,7 @@ contract Vault is ERC20, ReentrancyGuard {
         _mint(msg.sender, shares);
     }
 
-    function withdraw(uint256 shares) public nonReentrant  {
+    function withdraw(uint256 shares) external nonReentrant  {
 
         require (shares <= balanceOf(msg.sender), "invalid share amount");
 
@@ -366,7 +366,7 @@ contract Vault is ERC20, ReentrancyGuard {
 
     }
 
-    function buy() public nonReentrant {
+    function buy() external nonReentrant {
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
@@ -378,7 +378,8 @@ contract Vault is ERC20, ReentrancyGuard {
         require (amount > 0, "No enough balance to trade");
 
         // 3. takeTradingFees
-        amount = takeTradingFees(quoteToken, amount);
+        uint256 feeAmount = calcTradingFee(amount);
+        amount = takeTradingFees(quoteToken, amount, feeAmount);
 
         // 4. save the remaining to soldAmount
         soldAmount = amount;
@@ -390,7 +391,7 @@ contract Vault is ERC20, ReentrancyGuard {
         position = 1;
     }
 
-    function sell() public nonReentrant {
+    function sell() external nonReentrant {
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
@@ -403,7 +404,8 @@ contract Vault is ERC20, ReentrancyGuard {
         if (amount > 0) {
 
             // 3. takeUpbotsFee
-            amount = takeTradingFees(baseToken, amount);
+            uint256 feeAmount = calcTradingFee(amount);
+            amount = takeTradingFees(baseToken, amount, feeAmount);
 
             // 3. swap tokens to Quote and get the newly create quoteToken
             uint256 _before = IERC20(quoteToken).balanceOf(address(this));
@@ -434,7 +436,7 @@ contract Vault is ERC20, ReentrancyGuard {
         IOneInchAggregationExecutor oneInchCaller,
         OneInchSwapDescription calldata oneInchDesc,
         bytes calldata oneInchData
-    ) public nonReentrant {
+    ) external nonReentrant {
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
@@ -445,20 +447,20 @@ contract Vault is ERC20, ReentrancyGuard {
         require(position == 0, "The vault is already in open position");
 
         // 2. get the amount of quoteToken to trade
-        uint256 amount = IERC20(quoteToken).balanceOf(address(this));
-        require (amount > 0, "No enough balance to trade");
-        require(amount >= oneInchDesc.amount, "The swapping amount is small than vault amount");
-        require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
+        uint256 quoteAmount = IERC20(quoteToken).balanceOf(address(this));
+        require (quoteAmount > 0, "No enough balance to trade");
+        require(quoteAmount == oneInchDesc.amount, "The swapping amount should be same with total amount");
+        require(quoteToken == address(oneInchDesc.srcToken), "The swapping srcToken should be quoteToken");
+        require(baseToken == address(oneInchDesc.dstToken), "The swapping dstToken should be baseToken");
 
-        // 3. takeTradingFees
-        uint256 tradeAmount = amount;
-        amount = takeTradingFees(quoteToken, amount);
-        uint256 feeAmount = tradeAmount - amount;
+        // 3. calc quote fee amount
+        uint256 quoteFeeAmount = calcTradingFee(quoteAmount);
 
         // 4. save the remaining to soldAmount
-        soldAmount = amount;
+        soldAmount = quoteAmount - quoteFeeAmount;
 
         // 5. swap tokens to B
+        uint256 _before = IERC20(baseToken).balanceOf(address(this));
         IOneInchAggregationRouterV4 oneInchRouterV4 = IOneInchAggregationRouterV4(oneInchRouterAddr);
         (uint256 returnAmount, ) = oneInchRouterV4.swap(oneInchCaller, oneInchDesc, oneInchData);
         
@@ -469,19 +471,25 @@ contract Vault is ERC20, ReentrancyGuard {
                 revert(0, returndatasize())
             }
         }
+        uint256 _after = IERC20(baseToken).balanceOf(address(this));
+
+        // 6. takeTradingFees
+        uint256 baseAmount = _after - _before;
+        uint256 baseFeeAmount = calcTradingFee(baseAmount);
+        takeTradingFees(baseToken, baseAmount, baseFeeAmount);
 
         // 6. update position
         position = 1;
 
         // emit event        
-        emit TradeDone(position, tradeAmount, feeAmount, profit);
+        emit TradeDone(position, quoteAmount, quoteFeeAmount, profit);
     }
 
     function sellOneinchByParams(
         IOneInchAggregationExecutor oneInchCaller,
         OneInchSwapDescription calldata oneInchDesc,
         bytes calldata oneInchData
-    ) public nonReentrant {
+    ) external nonReentrant {
         
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
@@ -493,16 +501,15 @@ contract Vault is ERC20, ReentrancyGuard {
         require(position == 1, "The vault is in closed position");
 
         // 2. get the amount of baseToken to trade
-        uint256 amount = IERC20(baseToken).balanceOf(address(this));
+        uint256 baseAmount = IERC20(baseToken).balanceOf(address(this));
 
-        require (amount > 0, "No enough balance to trade");
-        require(amount >= oneInchDesc.amount, "The swapping amount is low than vault amount");
-        require(amount - oneInchDesc.amount < amount*5/100, "The different of swapping amount is greater than 5 percent");
+        require (baseAmount > 0, "No enough balance to trade");
+        require(baseAmount == oneInchDesc.amount, "The swapping amount should be same with total amount");
+        require(quoteToken == address(oneInchDesc.dstToken), "The swapping dstToken should be quoteToken");
+        require(baseToken == address(oneInchDesc.srcToken), "The swapping srcToken should be baseToken");
 
-        // 3. takeUpbotsFee
-        uint256 tradeAmount = amount;
-        amount = takeTradingFees(baseToken, amount);
-        uint256 feeAmount = tradeAmount - amount;
+        // 3. calc base fee amount
+        uint256 baseFeeAmount = calcTradingFee(baseAmount);
 
         // 4. swap tokens to Quote and get the newly create quoteToken
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
@@ -517,7 +524,11 @@ contract Vault is ERC20, ReentrancyGuard {
             }
         }
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-        amount = _after - _before;
+
+        // 5. takeUpbotsFee
+        uint256 quoteAmount = _after - _before;
+        uint256 quoteFeeAmount = calcTradingFee(quoteAmount);
+        uint256 amount = takeTradingFees(quoteToken, quoteAmount, quoteFeeAmount);
 
         // 5. calculate the profit in percent
         profit = profit * amount / soldAmount;
@@ -537,7 +548,7 @@ contract Vault is ERC20, ReentrancyGuard {
         position = 0;
 
         // emit event
-        emit TradeDone(position, tradeAmount, feeAmount, profit);
+        emit TradeDone(position, baseAmount, baseFeeAmount, profit);
     }
 
     function takeDepositFees(address token, uint256 amount) private returns(uint256) {
@@ -570,14 +581,14 @@ contract Vault is ERC20, ReentrancyGuard {
         return amount - fees;
     }
 
-    function takeTradingFees(address token, uint256 amount) private returns(uint256) {
-        
+    function calcTradingFee(uint256 amount) internal view returns(uint256) {
+        return amount * pctTradUpbots / percentMax;
+    }
+
+    function takeTradingFees(address token, uint256 amount, uint256 fee) private returns(uint256) {
         if (amount == 0) {
             return 0;
         }
-
-        // calculate fee
-        uint256 fee = amount * pctTradUpbots / percentMax;
 
         // swap to UBXT
         uint256 _before = IERC20(ubxt).balanceOf(address(this));
@@ -593,7 +604,6 @@ contract Vault is ERC20, ReentrancyGuard {
     }
     
     function takePerfFees(uint256 amount) private {
-
         if (amount == 0) {
             return ;
         }
@@ -690,7 +700,6 @@ contract Vault is ERC20, ReentrancyGuard {
     // *** internal functions ***
 
     function _calculateQuoteFromBase() internal view returns(uint256) {
-        
         uint256 amountBase = IERC20(baseToken).balanceOf(address(this));
 
         if (amountBase < SWAP_MIN) {
@@ -747,7 +756,7 @@ contract Vault is ERC20, ReentrancyGuard {
     }
 
     // Send remanining BNB (used for paraswap integration) to other wallet
-    function fundTransfer(address receiver, uint256 amount) public {
+    function fundTransfer(address receiver, uint256 amount) external {
         
         require(msg.sender == strategist, "Not strategist");
         require(receiver != address(0), "Please provide valid address");
