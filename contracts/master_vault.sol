@@ -117,6 +117,9 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     function deposit(uint256 amount) external nonReentrant {
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }
 
         require (vaults.length == VAULT_COUNT, "vaults are not updated yet.");
 
@@ -145,6 +148,9 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     function withdraw(uint256 shares) external nonReentrant {
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }
 
         require (vaults.length == VAULT_COUNT, "vaults length isn't VAULT_COUNT");
         require (shares <= balanceOf(msg.sender), "invalid share amount");
@@ -165,6 +171,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     function updateVaults(address[] memory _vaults) external {
+        require(whiteList[msg.sender], "Not whitelisted");
 
         // 1. check array length and zero address and strategist
         require (_vaults.length == VAULT_COUNT, "vaults length isn't VAULT_COUNT");
@@ -237,12 +244,15 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     // *** internal functions ***
 
     function depositToVault(address vault, uint256 amount) internal {
-
         require(vault != address(0), "vault zero address");
 
         if (amount == 0) {
             return;
         }
+
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }        
 
         // 1. get quote token of the vault
         address quoteToken = IVault(vault).quoteToken();
@@ -267,6 +277,10 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         if (shares == 0) {
             return;
         }
+
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }        
 
         // 1. get withdraw token (position: 0 => quote token, 1 => base token)
         
@@ -328,4 +342,11 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         require(amounts[0] > 0, "amounts[0] zero  amount");
     }
 
+    function isContract(address _addr) internal view returns (bool){
+        uint32 size;
+        assembly {
+            size := extcodesize(_addr)
+        }
+        return (size > 0);
+    }
 }

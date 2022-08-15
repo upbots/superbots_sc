@@ -13,7 +13,6 @@ contract VaultFactory is Ownable {
 
     event Received(address, uint);
     event VaultGenerated(address);
-    event SuperVaultGenerated(address);
     event GeneratorAddressUpdated(address);
 
     receive() external payable {
@@ -25,7 +24,7 @@ contract VaultFactory is Ownable {
     }
 
     function setGeneratorAddress(address _generator) external onlyOwner {
-        require(_generator != address(0),"generator address zero");
+        require(_generator != address(0));
         addrGenerator = _generator;
         emit GeneratorAddressUpdated(_generator);
     }
@@ -41,15 +40,14 @@ contract VaultFactory is Ownable {
         uint16 _pctTradUpbots,
         uint256 _maxCap
     ) external {
-        require(msg.sender == addrGenerator, "The caller isn't generator.");
+        require(msg.sender == addrGenerator, "Not generator");
 
-        require(_quoteToken != address(0), "_quoteToken zero address");
-        require(_baseToken != address(0), "_baseToken zero address");
-        require(_strategist != address(0), "_strategist zero address");
+        require(_quoteToken != address(0));
+        require(_baseToken != address(0));
+        require(_strategist != address(0));
+        require(_addrStakers != address(0));
 
-        require(_addrStakers != address(0), "_addrStakers zero address");
-
-        require (address(this).balance > LITTLE_BNB, "Put some BNB to this smart contract to give to the generated vaults");
+        require (address(this).balance > LITTLE_BNB, "No enough fund");
         
         // 1. deploy a new vault
         Vault newVault = new Vault(

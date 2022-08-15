@@ -18,8 +18,8 @@ contract Vault is ERC20, ReentrancyGuard {
     string public vaultName;
     bool public isForPartner;
 
-    address public immutable quoteToken;
-    address public immutable baseToken;
+    address public quoteToken;
+    address public baseToken;
 
     address public strategist;
     mapping(address => bool) public whiteList;
@@ -37,8 +37,6 @@ contract Vault is ERC20, ReentrancyGuard {
     address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
 
     address public constant pancakeRouter = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // mainnet v2
-
-    address public constant wbnb = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c; // mainnet
 
     address public constant ubxt = 0xBbEB90cFb6FAFa1F69AA130B7341089AbeEF5811; // mainnet
 
@@ -99,10 +97,10 @@ contract Vault is ERC20, ReentrancyGuard {
             string(abi.encodePacked("xUBXT_", _name))
         )
     {
-        require(_quoteToken != address(0), "_quoteToken zero address");
-        require(_baseToken != address(0), "_baseToken zero address");
-        require(_strategist != address(0), "_strategist zero address");
-        require(_addrStakers != address(0), "_addrStakers zero address");
+        require(_quoteToken != address(0));
+        require(_baseToken != address(0));
+        require(_strategist != address(0));
+        require(_addrStakers != address(0));
 
         require(_pctDeposit < percentMax, "_pctDeposit not valid");
         require(_pctWithdraw < percentMax, "_pctWithdraw not valid");
@@ -148,9 +146,9 @@ contract Vault is ERC20, ReentrancyGuard {
     ) external {
         require(msg.sender == strategist, "Not strategist");
 
-        require(_addrStakers != address(0), "_addrStakers zero address");
-        require(_addrAlgoDev != address(0), "_addrAlgoDev zero address");
-        require(_addrUpbots != address(0), "_addrUpbots zero address");
+        require(_addrStakers != address(0));
+        require(_addrAlgoDev != address(0));
+        require(_addrUpbots != address(0));
 
         require(_pctPerfAlgoDev < percentMax, "_pctPerfAlgoDev not valid");
         require(_pctPerfPartner < percentMax, "_pctPerfPartner not valid");
@@ -176,30 +174,30 @@ contract Vault is ERC20, ReentrancyGuard {
     }
 
     function addToWhiteList(address _address) external {
-        require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
+        require(_address != address(0));
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
     function removeFromWhiteList(address _address) external {
-        require(_address != address(0),"white list address zero");
         require(msg.sender == strategist, "Not strategist");
+        require(_address != address(0));
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);
     }
 
     function setStrategist(address _address) external {
-        require(_address != address(0), "strategist address zero");
         require(msg.sender == strategist, "Not strategist");
+        require(_address != address(0));
         whiteList[_address] = true;
         strategist = _address;
         emit StrategistAddressUpdated(_address);
     }
 
     function setPartnerAddress(address _address) external {
-        require(_address != address(0), "partner address zero");
         require(msg.sender == strategist, "Not strategist");
+        require(_address != address(0));
         addrPartner = _address;
         emit PartnerAddressUpdated(_address);
     }
@@ -245,6 +243,9 @@ contract Vault is ERC20, ReentrancyGuard {
     }
 
     function depositQuote(uint256 amount) external nonReentrant {
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -283,6 +284,10 @@ contract Vault is ERC20, ReentrancyGuard {
     }
 
     function depositBase(uint256 amount) external nonReentrant {
+        if (isContract(msg.sender)) {
+            require(whiteList[msg.sender], "Not whitelisted SC");
+        }
+
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -327,7 +332,7 @@ contract Vault is ERC20, ReentrancyGuard {
 
     function withdraw(uint256 shares) external nonReentrant  {
 
-        require (shares <= balanceOf(msg.sender), "invalid share amount");
+        require (shares <= balanceOf(msg.sender), "Invalid share amount");
 
         if (position == 0) {
 
@@ -371,11 +376,11 @@ contract Vault is ERC20, ReentrancyGuard {
         require(whiteList[msg.sender], "Not whitelisted");
 
         // 1. Check if the vault is in closed position
-        require(position == 0, "The vault is already in open position");
+        require(position == 0, "Not valid position");
 
         // 2. get the amount of quoteToken to trade
         uint256 amount = IERC20(quoteToken).balanceOf(address(this));
-        require (amount > 0, "No enough balance to trade");
+        require (amount > 0, "No enough amount");
 
         // 3. takeTradingFees
         uint256 feeAmount = calcTradingFee(amount);
@@ -396,7 +401,7 @@ contract Vault is ERC20, ReentrancyGuard {
         require(whiteList[msg.sender], "Not whitelisted");
 
         // 1. check if the vault is in open position
-        require(position == 1, "The vault is in closed position");
+        require(position == 1, "Not valid position");
 
         // 2. get the amount of baseToken to trade
         uint256 amount = IERC20(baseToken).balanceOf(address(this));
@@ -440,18 +445,16 @@ contract Vault is ERC20, ReentrancyGuard {
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
-        require(oneInchRouterAddr != address(0), "Please provide valid address");
-        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
+        require(oneInchRouterAddr != address(0));
+        require(oneInchDesc.dstReceiver == address(this), "Not valid dstReceiver");
 
         // 1. Check if the vault is in closed position
-        require(position == 0, "The vault is already in open position");
+        require(position == 0, "Not valid position");
 
         // 2. get the amount of quoteToken to trade
         uint256 quoteAmount = IERC20(quoteToken).balanceOf(address(this));
-        require (quoteAmount > 0, "No enough balance to trade");
-        require(quoteAmount == oneInchDesc.amount, "The swapping amount should be same with total amount");
-        require(quoteToken == address(oneInchDesc.srcToken), "The swapping srcToken should be quoteToken");
-        require(baseToken == address(oneInchDesc.dstToken), "The swapping dstToken should be baseToken");
+        require (quoteAmount > 0, "No enough quoteAmount");
+        require(quoteAmount == oneInchDesc.amount, "Not valid amount");
 
         // 3. calc quote fee amount
         uint256 quoteFeeAmount = calcTradingFee(quoteAmount);
@@ -494,19 +497,18 @@ contract Vault is ERC20, ReentrancyGuard {
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
-        require(oneInchRouterAddr != address(0), "Please provide valid address");
-        require(oneInchDesc.dstReceiver == address(this), "The destination address isn't vault SC");
+        require(oneInchRouterAddr != address(0));
+        require(oneInchDesc.dstReceiver == address(this), "Not valid dstReceiver");
 
         // 1. check if the vault is in open position
-        require(position == 1, "The vault is in closed position");
+        require(position == 1, "Not valid position");
 
         // 2. get the amount of baseToken to trade
         uint256 baseAmount = IERC20(baseToken).balanceOf(address(this));
 
-        require (baseAmount > 0, "No enough balance to trade");
-        require(baseAmount == oneInchDesc.amount, "The swapping amount should be same with total amount");
-        require(quoteToken == address(oneInchDesc.dstToken), "The swapping dstToken should be quoteToken");
-        require(baseToken == address(oneInchDesc.srcToken), "The swapping srcToken should be baseToken");
+        require (baseAmount > 0, "No enough baseAmount");
+        require(baseAmount == oneInchDesc.amount, "Not valid amount");
+
 
         // 3. calc base fee amount
         uint256 baseFeeAmount = calcTradingFee(baseAmount);
@@ -680,7 +682,7 @@ contract Vault is ERC20, ReentrancyGuard {
 
         // Transfer
         IERC20(ubxt).safeTransfer(
-            address(0), // burn
+            burnAddress,
             burnAmount
         );
         
@@ -708,7 +710,7 @@ contract Vault is ERC20, ReentrancyGuard {
         uint256[] memory amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(amountBase, pathBackward);
         return amounts[amounts.length - 1];
     }
-    
+
     function approveTokensForOneinch() internal {
         assert(IERC20(quoteToken).approve(oneInchRouterAddr, MAX));
         assert(IERC20(baseToken).approve(oneInchRouterAddr, MAX));
@@ -719,7 +721,7 @@ contract Vault is ERC20, ReentrancyGuard {
         address _to,
         uint256 _amount
     ) internal {
-        require(_to != address(0), "_to zero address");
+        require(_to != address(0));
 
         // Swap with uniswap
         assert(IERC20(_from).approve(pancakeRouter, 0));
@@ -752,14 +754,13 @@ contract Vault is ERC20, ReentrancyGuard {
             block.timestamp + 60
         );
 
-        require(amounts[0] > 0, "There was problem in pancakeswap");
+        require(amounts[0] > 0, "Not valid return amount in pancakeswap");
     }
 
     // Send remanining BNB (used for paraswap integration) to other wallet
     function fundTransfer(address receiver, uint256 amount) external {
-        
         require(msg.sender == strategist, "Not strategist");
-        require(receiver != address(0), "Please provide valid address");
+        require(receiver != address(0));
 
         // payable(receiver).transfer(amount);
         (bool sent, ) = receiver.call{value: amount}("");
@@ -768,4 +769,11 @@ contract Vault is ERC20, ReentrancyGuard {
         emit FundTransfer(receiver, amount);
     }
 
+    function isContract(address _addr) internal view returns (bool){
+        uint32 size;
+        assembly {
+            size := extcodesize(_addr)
+        }
+        return (size > 0);
+    }    
 }
