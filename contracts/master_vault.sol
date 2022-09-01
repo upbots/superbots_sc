@@ -98,19 +98,26 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         if (vaults.length < VAULT_COUNT) return 0;
 
         uint256[] memory amounts;
-        address[] memory path = new address[](3);    
-        path[1] = wbnb;
-        path[2] = capitalToken;    
+        address[] memory path = new address[](2);    
+        path[1] = capitalToken;    
 
         uint256 _poolSize = 0;
 
         for (uint i = 0; i < VAULT_COUNT; i++) {
             uint256 shares = IERC20(vaults[i]).balanceOf(msg.sender);
             uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
-            path[0] = IVault(vaults[i]).quoteToken();
-            amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(subPoolSize, path);
 
-            _poolSize = _poolSize + amounts[2];
+            uint256 subPoolSizeInCapital;
+            if (IVault(vaults[i]).quoteToken() == capitalToken) {
+                subPoolSizeInCapital = subPoolSize;
+            }
+            else {
+                path[0] = IVault(vaults[i]).quoteToken();
+                amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(subPoolSize, path);
+                subPoolSizeInCapital = amounts[1];
+            }
+
+            _poolSize = _poolSize + subPoolSizeInCapital;
         }
 
         return _poolSize;
