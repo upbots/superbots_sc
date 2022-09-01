@@ -5,6 +5,8 @@
 /coverage/
 **.dbg.json
 
+/deployments/
+
 # don't check in artifacts and build, instead check in exports folder
 artifacts
 build
