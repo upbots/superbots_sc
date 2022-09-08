@@ -24,10 +24,6 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
     
     address public constant pancakeRouter = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // mainnet v2
 
-    address public constant wbnb = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c; // mainnet
-
-    address public constant ubxt = 0xBbEB90cFb6FAFa1F69AA130B7341089AbeEF5811; // mainnet
-    
     uint256 public constant pancakeswapSlippage = 10;
 
     uint public constant VAULT_COUNT = 5;
@@ -104,7 +100,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
         uint256 _poolSize = 0;
 
         for (uint i = 0; i < VAULT_COUNT; i++) {
-            uint256 shares = IERC20(vaults[i]).balanceOf(msg.sender);
+            uint256 shares = IERC20(vaults[i]).balanceOf(address(this));
             uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
 
             uint256 subPoolSizeInCapital;
