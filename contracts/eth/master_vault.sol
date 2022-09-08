@@ -100,7 +100,7 @@ contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
         uint256 _poolSize = 0;
 
         for (uint i = 0; i < VAULT_COUNT; i++) {
-            uint256 shares = IERC20(vaults[i]).balanceOf(msg.sender);
+            uint256 shares = IERC20(vaults[i]).balanceOf(address(this));
             uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
 
             uint256 subPoolSizeInCapital;
