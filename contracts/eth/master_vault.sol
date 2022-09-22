@@ -77,18 +77,6 @@ contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
         emit ParameterUpdated(maxCap);
     }
 
-    // Send remanining BNB (used for paraswap integration) to other wallet
-    function fundTransfer(address receiver, uint256 amount) external onlyOwner {
-        
-        require(receiver != address(0), "receiver zero address");
-
-        // payable(receiver).transfer(amount);
-        (bool sent, ) = receiver.call{value: amount}("");
-        require(sent, "Failed to send Fund");
-
-        emit FundTransfer(receiver, amount);
-    }
-
     function poolSize() public view returns (uint256) {
 
         if (vaults.length < VAULT_COUNT) return 0;
@@ -101,8 +89,9 @@ contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
 
         for (uint i = 0; i < VAULT_COUNT; i++) {
             uint256 shares = IERC20(vaults[i]).balanceOf(address(this));
-            uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
+            if (shares == 0) continue;
 
+            uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
             if (subPoolSize == 0) continue;
             
             uint256 subPoolSizeInCapital;
@@ -130,6 +119,7 @@ contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
 
         // 1. Check max cap
         require (maxCap == 0 || totalSupply() + amount < maxCap, "The vault reached the max cap");
+        uint256 _poolSize = poolSize();
 
         // 2. receive funds
         IERC20(capitalToken).safeTransferFrom(msg.sender, address(this), amount);
@@ -147,7 +137,7 @@ contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
             shares = amount;
         }
         else {
-            shares = amount * totalSupply() / poolSize();
+            shares = amount * totalSupply() / _poolSize;
         }
         _mint(msg.sender, shares);
     }
