@@ -24,42 +24,36 @@ contract VaultETH is ERC20, ReentrancyGuard {
     mapping(address => bool) public whiteList;
 
     uint256 public maxCap = 0;
+    uint256 public depositMinQuote = 0;
+    uint256 public depositMinBase = 0;
     uint256 public position = 0; // 0: closed, 1: opened
     uint256 public soldAmount = 0;
     uint256 public profit = percentMax;
 
     // path backward for the pancake
     address[] private pathBackward;
-        
-    address public constant oneInchRouterAddr = 0x1111111254fb6c44bAC0beD2854e76F90643097d;
-
-    address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
-
+    
+    // addresses
+    address public constant aggregatorAddr = 0xDef1C0ded9bec7F1a1670819833240f027b25EfF;
     address public constant pancakeRouter = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // mainnet v2 (uniswap router v2)
     address public constant sushiRouter = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F; // mainnet v2 
-
+    address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
     address public constant ubxt = 0x8564653879a18C560E7C0Ea0E084c516C62F5653; // mainnet
-
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // mainnet
 
     uint256 public constant pancakeswapSlippage = 10;
-
     uint256 private constant MAX = (10 ** 18) * (10 ** 18);
-        
     uint256 public constant SWAP_MIN = 10 ** 6;
-
     uint16 public constant percentMax = 10000;
 
     // percent values for the fees
     uint16 public pctDeposit = 45;
     uint16 public pctWithdraw = 100;
-
     uint16 public pctPerfBurning = 250;
     uint16 public pctPerfStakers = 250;
     uint16 public pctPerfAlgoDev = 500;
     uint16 public pctPerfUpbots = 500;
     uint16 public pctPerfPartners = 1000;
-
     uint16 public pctTradUpbots = 8;
 
     // address for the fees
@@ -67,12 +61,13 @@ contract VaultETH is ERC20, ReentrancyGuard {
     address public addrAlgoDev;
     address public addrUpbots;
     address public addrPartner;
-
     address public addrFactory;
 
+    // last block number
+    mapping(address => uint) public lastBlockNumber;
+
     event Received(address, uint);
-    event FundTransfer(address, uint256);
-    event ParameterUpdated(address, address, address, address, uint16, uint16, uint256);
+    event ParameterUpdated(address, address, address, address, uint16, uint16, uint256, uint256, uint256);
     event StrategistAddressUpdated(address);
     event PartnerAddressUpdated(address);
     event WhiteListAdded(address);
@@ -92,7 +87,9 @@ contract VaultETH is ERC20, ReentrancyGuard {
         uint16 _pctDeposit,
         uint16 _pctWithdraw,
         uint16 _pctTradUpbots,
-        uint256 _maxCap
+        uint256 _maxCap,
+        uint256 _depositMinQuote,
+        uint256 _depositMinBase
     )
         ERC20(
             string(abi.encodePacked("xUBXT_", _name)), 
@@ -117,6 +114,8 @@ contract VaultETH is ERC20, ReentrancyGuard {
         pctTradUpbots = _pctTradUpbots;
 
         maxCap = _maxCap;
+        depositMinBase = _depositMinBase;
+        depositMinQuote = _depositMinQuote;
 
         isForPartner = false;
 
@@ -144,7 +143,9 @@ contract VaultETH is ERC20, ReentrancyGuard {
         address _addrPartner,        
         uint16 _pctPerfAlgoDev,
         uint16 _pctPerfPartner,
-        uint256 _maxCap
+        uint256 _maxCap,
+        uint256 _depositMinQuote,
+        uint256 _depositMinBase
     ) external {
         require(msg.sender == strategist, "Not strategist");
 
@@ -164,10 +165,12 @@ contract VaultETH is ERC20, ReentrancyGuard {
         pctPerfPartners = _pctPerfPartner;
 
         maxCap = _maxCap;
+        depositMinBase = _depositMinBase;
+        depositMinQuote = _depositMinQuote;
 
         isForPartner = _addrPartner != address(0);
 
-        emit ParameterUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner, pctPerfAlgoDev, pctPerfPartners, maxCap);
+        emit ParameterUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner, pctPerfAlgoDev, pctPerfPartners, maxCap, depositMinQuote, depositMinBase);
     }
 
     function poolSize() public view returns (uint256) {
@@ -204,50 +207,12 @@ contract VaultETH is ERC20, ReentrancyGuard {
         emit PartnerAddressUpdated(_address);
     }
 
-    function resetTrade() external {
-        require(msg.sender == strategist, "Not strategist");
-
-        // 1. swap all baseToken to quoteToken
-        uint256 amount = IERC20(baseToken).balanceOf(address(this));
-        if (amount > 10**6) {
-            _swapPancakeswap(baseToken, quoteToken, amount);
-        }
-
-        // 2. reset profit calculation
-        profit = percentMax;
-        soldAmount = 0;
-
-        // 3. reset position
-        position = 0;
-    }
-
-    function resetTradeOneinch(bytes memory swapCalldata) external {
-        
-        require(msg.sender == strategist, "Not strategist");
-
-        // 1. swap all baseToken to quoteToken
-        (bool success,) = oneInchRouterAddr.call(swapCalldata);
-        
-        if (!success) {
-            // Copy revert reason from call
-            assembly {
-                returndatacopy(0, 0, returndatasize())
-                revert(0, returndatasize())
-            }
-        }
-
-        // 2. reset profit calculation
-        profit = percentMax;
-        soldAmount = 0;
-
-        // 3. reset position
-        position = 0;
-    }
-
     function depositQuote(uint256 amount) external nonReentrant {
-        if (isContract(msg.sender)) {
-            require(whiteList[msg.sender], "Not whitelisted SC");
-        }
+
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+
+        // 0. Check min amount
+        require (amount >= depositMinQuote, "the deposit amount is below than minimum");
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -283,13 +248,16 @@ contract VaultETH is ERC20, ReentrancyGuard {
             shares = amount * totalSupply() / _pool;
         }
         _mint(msg.sender, shares);
+
+        lastBlockNumber[msg.sender] = block.number;
     }
 
     function depositBase(uint256 amount) external nonReentrant {
-        if (isContract(msg.sender)) {
-            require(whiteList[msg.sender], "Not whitelisted SC");
-        }
+        
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
 
+        // 0. Check min amount
+        require (amount >= depositMinBase, "the deposit amount is below than minimum");
 
         // 1. Check max cap
         uint256 _pool = poolSize();
@@ -330,9 +298,13 @@ contract VaultETH is ERC20, ReentrancyGuard {
             shares = amount * totalSupply() / _pool;
         }
         _mint(msg.sender, shares);
+
+        lastBlockNumber[msg.sender] = block.number;
     }
 
     function withdraw(uint256 shares) external nonReentrant  {
+
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
 
         require (shares <= balanceOf(msg.sender), "Invalid share amount");
 
@@ -371,9 +343,13 @@ contract VaultETH is ERC20, ReentrancyGuard {
         // burn these shares from the sender wallet
         _burn(msg.sender, shares);
 
+        lastBlockNumber[msg.sender] = block.number;
     }
 
-    function buy() external nonReentrant {
+    function buyUniswap() external nonReentrant {
+        
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
@@ -396,9 +372,14 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
         // 6. update position
         position = 1;
+        
+        lastBlockNumber[msg.sender] = block.number;
     }
 
-    function sell() external nonReentrant {
+    function sellUniswap() external nonReentrant {
+        
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
@@ -437,14 +418,19 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
         // 7. update position
         position = 0;
+        
+        lastBlockNumber[msg.sender] = block.number;
     }
 
-    function buyOneinchByParams(bytes calldata swapCallData) external nonReentrant {
+    function buy(bytes calldata swapCallData) external nonReentrant {
+        
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
-        require(oneInchRouterAddr != address(0));
-        
+        require(aggregatorAddr != address(0));
+
         // 1. Check if the vault is in closed position
         require(position == 0, "Not valid position");
 
@@ -461,7 +447,7 @@ contract VaultETH is ERC20, ReentrancyGuard {
         // 5. swap tokens to B
         uint256 _before = IERC20(baseToken).balanceOf(address(this));
 
-        (bool success,) = oneInchRouterAddr.call(swapCallData);
+        (bool success,) = aggregatorAddr.call(swapCallData);
         
         if (!success) {
             // Copy revert reason from call
@@ -483,14 +469,18 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
         // emit event        
         emit TradeDone(position, quoteAmount, quoteFeeAmount, profit);
+        
+        lastBlockNumber[msg.sender] = block.number;
     }
 
-    function sellOneinchByParams(bytes calldata swapCallData) external nonReentrant {
+    function sell(bytes calldata swapCallData) external nonReentrant {
+        
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
         
         // 0. check whitelist
         require(whiteList[msg.sender], "Not whitelisted");
 
-        require(oneInchRouterAddr != address(0));
+        require(aggregatorAddr != address(0));
 
         // 1. check if the vault is in open position
         require(position == 1, "Not valid position");
@@ -507,7 +497,7 @@ contract VaultETH is ERC20, ReentrancyGuard {
         // 4. swap tokens to Quote and get the newly create quoteToken
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
 
-        (bool success,) = oneInchRouterAddr.call(swapCallData);
+        (bool success,) = aggregatorAddr.call(swapCallData);
         
         if (!success) {
             // Copy revert reason from call
@@ -543,6 +533,8 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
         // emit event
         emit TradeDone(position, baseAmount, baseFeeAmount, profit);
+        
+        lastBlockNumber[msg.sender] = block.number;
     }
 
     function takeDepositFees(address token, uint256 amount) private returns(uint256) {
@@ -704,8 +696,8 @@ contract VaultETH is ERC20, ReentrancyGuard {
     }
 
     function approveTokensForOneinch() internal {
-        assert(IERC20(quoteToken).approve(oneInchRouterAddr, MAX));
-        assert(IERC20(baseToken).approve(oneInchRouterAddr, MAX));
+        assert(IERC20(quoteToken).approve(aggregatorAddr, MAX));
+        assert(IERC20(baseToken).approve(aggregatorAddr, MAX));
     }
 
     function _swapPancakeswap(
@@ -791,23 +783,10 @@ contract VaultETH is ERC20, ReentrancyGuard {
         require(amounts[0] > 0, "Not valid return amount in pancakeswap");
     }
 
-    // Send remanining BNB (used for paraswap integration) to other wallet
-    function fundTransfer(address receiver, uint256 amount) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(receiver != address(0));
-
-        // payable(receiver).transfer(amount);
-        (bool sent, ) = receiver.call{value: amount}("");
-        require(sent, "Failed to send Fund");
-
-        emit FundTransfer(receiver, amount);
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal virtual override
+    {
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+        lastBlockNumber[msg.sender] = block.number;
     }
-
-    function isContract(address _addr) internal view returns (bool){
-        uint32 size;
-        assembly {
-            size := extcodesize(_addr)
-        }
-        return (size > 0);
-    }    
 }
