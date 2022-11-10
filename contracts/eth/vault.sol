@@ -6,11 +6,12 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "../interfaces/uniswapv2.sol";
 
 import "../interfaces/oneinch.sol";
 
-contract VaultETH is ERC20, ReentrancyGuard {
+contract VaultETH is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
@@ -19,32 +20,30 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     address public quoteToken;
     address public baseToken;
+    address public aggregatorAddr;
 
-    address public strategist;
     mapping(address => bool) public whiteList;
 
     uint256 public maxCap = 0;
-    uint256 public depositMinQuote = 0;
-    uint256 public depositMinBase = 0;
+    uint256 public minDeposit = 10 ** 17;
     uint256 public position = 0; // 0: closed, 1: opened
     uint256 public soldAmount = 0;
-    uint256 public profit = percentMax;
+    uint256 public profit = PERCENT_MAX;
 
     // path backward for the pancake
     address[] private pathBackward;
+    address[] private pathForward;
     
     // addresses
-    address public constant aggregatorAddr = 0xDef1C0ded9bec7F1a1670819833240f027b25EfF;
-    address public constant pancakeRouter = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // mainnet v2 (uniswap router v2)
-    address public constant sushiRouter = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F; // mainnet v2 
-    address public constant burnAddress = 0x000000000000000000000000000000000000dEaD;
-    address public constant ubxt = 0x8564653879a18C560E7C0Ea0E084c516C62F5653; // mainnet
+    address public constant UNISWAP_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // mainnet v2 (uniswap router v2)
+    address public constant SUSHISWAP_ROUTER = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F; // mainnet v2 
+    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    address public constant UBXT = 0x8564653879a18C560E7C0Ea0E084c516C62F5653; // mainnet
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // mainnet
 
-    uint256 public constant pancakeswapSlippage = 10;
-    uint256 private constant MAX = (10 ** 18) * (10 ** 18);
+    uint256 private constant MAX_APPROVAL = (10 ** 18) * (10 ** 18);
     uint256 public constant SWAP_MIN = 10 ** 6;
-    uint16 public constant percentMax = 10000;
+    uint16 public constant PERCENT_MAX = 10000;
 
     // percent values for the fees
     uint16 public pctDeposit = 45;
@@ -67,12 +66,12 @@ contract VaultETH is ERC20, ReentrancyGuard {
     mapping(address => uint) public lastBlockNumber;
 
     event Received(address, uint);
-    event ParameterUpdated(address, address, address, address, uint16, uint16, uint256, uint256, uint256);
-    event StrategistAddressUpdated(address);
-    event PartnerAddressUpdated(address);
+    event AddressesUpdated(address, address, address, address);
+    event FeesUpdated(uint16, uint16, uint16, uint16, uint16);
+    event CapLimitsUpdated(uint256, uint256);
     event WhiteListAdded(address);
     event WhiteListRemoved(address);
-    event TradeDone(uint256, uint256, uint256, uint256);
+    event TradeDone(uint256, uint256, uint256);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
@@ -80,172 +79,147 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     constructor(
         string memory _name,
-        address _quoteToken, 
-        address _baseToken, 
-        address _strategist,
-        address _addrStakers,
-        uint16 _pctDeposit,
-        uint16 _pctWithdraw,
-        uint16 _pctTradUpbots,
-        uint256 _maxCap,
-        uint256 _depositMinQuote,
-        uint256 _depositMinBase
+        address _quoteToken,
+        address _baseToken,
+        address _aggregatorAddr
     )
         ERC20(
             string(abi.encodePacked("xUBXT_", _name)), 
             string(abi.encodePacked("xUBXT_", _name))
         )
     {
-        require(_quoteToken != address(0));
-        require(_baseToken != address(0));
-        require(_strategist != address(0));
-        require(_addrStakers != address(0));
-
-        require(_pctDeposit < percentMax, "_pctDeposit not valid");
-        require(_pctWithdraw < percentMax, "_pctWithdraw not valid");
-        require(_pctTradUpbots < percentMax, "_pctTradUpbots not valid");
+        require(_quoteToken != address(0), "invalid quoteToken address");
+        require(_baseToken != address(0), "invalid baseToken address");
 
         vaultName = _name;
-
-        addrStakers = _addrStakers;
-        
-        pctDeposit = _pctDeposit;
-        pctWithdraw = _pctWithdraw;
-        pctTradUpbots = _pctTradUpbots;
-
-        maxCap = _maxCap;
-        depositMinBase = _depositMinBase;
-        depositMinQuote = _depositMinQuote;
-
-        isForPartner = false;
-
-        strategist = _strategist;
-        whiteList[_strategist] = true;
-
         quoteToken = _quoteToken;
         baseToken = _baseToken;
+        aggregatorAddr = _aggregatorAddr;
 
+        isForPartner = false;
+        whiteList[msg.sender] = true;
+        addrFactory = msg.sender;
 
         pathBackward = new address[](2);
         pathBackward[0] = baseToken;
         pathBackward[1] = quoteToken;
-
-        addrFactory = msg.sender;
+        
+        pathForward = new address[](2);
+        pathForward[0] = quoteToken;
+        pathForward[1] = baseToken;
         
         // allow tokens for oneinch token transfer proxy
-        approveTokensForOneinch();
+        approveTokensForAggregator();
     }
 
-    function setParameters(
+    function updateFees(
+        uint16 _pctDeposit,
+        uint16 _pctWithdraw,
+        uint16 _pctTradUpbots,
+        uint16 _pctPerfAlgoDev,
+        uint16 _pctPerfPartner
+    ) external onlyOwner {
+
+        require(_pctDeposit < PERCENT_MAX, "invalid deposit fee percentage");
+        require(_pctWithdraw < PERCENT_MAX, "invalid withdraw fee percentage");
+        require(_pctTradUpbots < PERCENT_MAX, "invalid trade fee percentage");
+        require(_pctPerfAlgoDev < PERCENT_MAX, "invalid algo dev performance fee");
+        require(_pctPerfPartner < PERCENT_MAX, "invalid partner fee");
+
+        pctDeposit = _pctDeposit;
+        pctWithdraw = _pctWithdraw;
+        pctTradUpbots = _pctTradUpbots;
+        pctPerfAlgoDev = _pctPerfAlgoDev;
+        pctPerfPartners = _pctPerfPartner;
+        
+        emit FeesUpdated(pctDeposit, pctWithdraw, pctTradUpbots, pctPerfAlgoDev, pctPerfPartners);
+    }
+
+    function updateAddresses(
         address _addrStakers,
         address _addrAlgoDev,
         address _addrUpbots,
-        address _addrPartner,        
-        uint16 _pctPerfAlgoDev,
-        uint16 _pctPerfPartner,
-        uint256 _maxCap,
-        uint256 _depositMinQuote,
-        uint256 _depositMinBase
-    ) external {
-        require(msg.sender == strategist, "Not strategist");
-
-        require(_addrStakers != address(0));
-        require(_addrAlgoDev != address(0));
-        require(_addrUpbots != address(0));
-
-        require(_pctPerfAlgoDev < percentMax, "_pctPerfAlgoDev not valid");
-        require(_pctPerfPartner < percentMax, "_pctPerfPartner not valid");
+        address _addrPartner
+    ) external onlyOwner {
+        
+        require(_addrStakers != address(0), "invalid stakers address");
+        require(_addrAlgoDev != address(0), "invalid algo dev address");
+        require(_addrUpbots != address(0), "invalid upbots address");
 
         addrStakers = _addrStakers;
         addrAlgoDev = _addrAlgoDev;
         addrUpbots = _addrUpbots;
         addrPartner = _addrPartner;
-        
-        pctPerfAlgoDev = _pctPerfAlgoDev;
-        pctPerfPartners = _pctPerfPartner;
-
-        maxCap = _maxCap;
-        depositMinBase = _depositMinBase;
-        depositMinQuote = _depositMinQuote;
 
         isForPartner = _addrPartner != address(0);
-
-        emit ParameterUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner, pctPerfAlgoDev, pctPerfPartners, maxCap, depositMinQuote, depositMinBase);
+        
+        emit AddressesUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner);
     }
 
-    function poolSize() public view returns (uint256) {
-        return
-            (IERC20(quoteToken).balanceOf(address(this)) + _calculateQuoteFromBase());
+    function updateCapLimits(
+        uint256 _maxCap,
+        uint256 _minDeposit
+    ) external onlyOwner {
+        
+        maxCap = _maxCap;
+        minDeposit = _minDeposit;
+
+        emit CapLimitsUpdated(maxCap, minDeposit);
     }
 
-    function addToWhiteList(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0));
+    function addToWhiteList(address _address) external onlyOwner {
+        require(_address != address(0), "invalid address");
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
-    function removeFromWhiteList(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0));
+    function removeFromWhiteList(address _address) external onlyOwner {
+        require(_address != address(0), "invalid address");
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);
     }
 
-    function setStrategist(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0));
-        whiteList[_address] = true;
-        strategist = _address;
-        emit StrategistAddressUpdated(_address);
-    }
-
-    function setPartnerAddress(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0));
-        addrPartner = _address;
-        emit PartnerAddressUpdated(_address);
-    }
-
     function depositQuote(uint256 amount) external nonReentrant {
 
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
 
-        // 0. Check min amount
-        require (amount >= depositMinQuote, "the deposit amount is below than minimum");
+        // 1. Check min deposit
+        require (amount >= minDeposit, "invalid deposit amount");
 
-        // 1. Check max cap
-        uint256 _pool = poolSize();
-        require (maxCap == 0 || _pool + amount < maxCap, "The vault reached the max cap");
+        // 2. Check max cap
+        uint256 _poolSize;
+        uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(IERC20(baseToken).balanceOf(address(this)), pathBackward);
+        _poolSize = amounts[1] + IERC20(quoteToken).balanceOf(address(this)); // get approximate pool size to compare with max cap
+        require (maxCap == 0 || _poolSize + amount < maxCap, "The vault reached the max cap");
 
-        // 2. transfer quote from sender to this vault
+        // 3. transfer quote from sender to this vault
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IERC20(quoteToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
-        // 3. pay deposit fees
-        amount = takeDepositFees(quoteToken, amount);
+        // 4. pay deposit fees
+        amount = takeDepositFees(quoteToken, amount, true);
 
-        // 4. swap Quote to Base if position is opened
+        // 5. swap Quote to Base if position is opened
         if (position == 1) {
             soldAmount = soldAmount + amount;
 
             _before = IERC20(baseToken).balanceOf(address(this));
-            _swapPancakeswap(quoteToken, baseToken, amount);
+            _swapUniswap(quoteToken, baseToken, amount);
             _after = IERC20(baseToken).balanceOf(address(this));
             amount = _after - _before;
 
-            _pool = _before;
+            _poolSize = _before;
         }
 
-        // 5. calculate share and send back xUBXT
+        // 6. calculate share and send back xUBXT
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
         }
         else {
-            shares = amount * totalSupply() / _pool;
+            shares = amount * totalSupply() / _poolSize;
         }
         _mint(msg.sender, shares);
 
@@ -254,40 +228,44 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     function depositBase(uint256 amount) external nonReentrant {
         
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
 
-        // 0. Check min amount
-        require (amount >= depositMinBase, "the deposit amount is below than minimum");
+        // . Check min amount
+        uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(minDeposit, pathForward);
+        require (amount >= amounts[1], "invalid deposit amount");
 
-        // 1. Check max cap
-        uint256 _pool = poolSize();
-        uint256[] memory amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(amount, pathBackward);
-        uint256 expectedQuote = amounts[amounts.length - 1];
-        require (maxCap == 0 || _pool + expectedQuote < maxCap, "The vault reached the max cap");
+        // . Check max cap
+        uint256 _poolSize;
+        amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(IERC20(baseToken).balanceOf(address(this)), pathBackward);
+        _poolSize = amounts[1] + IERC20(quoteToken).balanceOf(address(this)); // get approximate pool size to compare with max cap
+        amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(amount, pathBackward);
+        require (maxCap == 0 || _poolSize + amounts[1] < maxCap, "The vault reached the max cap");
 
-        // 2. transfer base from sender to this vault
+        // . transfer base from sender to this vault
         uint256 _before = IERC20(baseToken).balanceOf(address(this));
         IERC20(baseToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(baseToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
         // 3. pay deposit fees
-        amount = takeDepositFees(baseToken, amount);
+        amount = takeDepositFees(baseToken, amount, true);
 
-        _pool = _before;
+        _poolSize = _before;
+        
         // 4. swap Base to Quote if position is closed
         if (position == 0) {
             _before = IERC20(quoteToken).balanceOf(address(this));
-            _swapPancakeswap(baseToken, quoteToken, amount);
+            _swapUniswap(baseToken, quoteToken, amount);
             _after = IERC20(quoteToken).balanceOf(address(this));
             amount = _after - _before;
 
-            _pool = _before;
+            _poolSize = _before;
         }
 
         // update soldAmount if position is opened
         if (position == 1) {
-            soldAmount = soldAmount + expectedQuote;
+            amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(amount, pathBackward);
+            soldAmount = soldAmount + amounts[1]; // amount[1] is the deposit amount in quote token
         }
 
         // 5. calculate share and send back xUBXT
@@ -295,7 +273,7 @@ contract VaultETH is ERC20, ReentrancyGuard {
         if (totalSupply() == 0) {
             shares = amount;
         } else {
-            shares = amount * totalSupply() / _pool;
+            shares = amount * totalSupply() / _poolSize;
         }
         _mint(msg.sender, shares);
 
@@ -304,39 +282,41 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     function withdraw(uint256 shares) external nonReentrant  {
 
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
 
         require (shares <= balanceOf(msg.sender), "Invalid share amount");
 
+        uint256 withdrawAmount;
+
         if (position == 0) {
 
-            uint256 amountQuote = IERC20(quoteToken).balanceOf(address(this)) * shares / totalSupply();
-            if (amountQuote > 0) {
+            withdrawAmount = IERC20(quoteToken).balanceOf(address(this)) * shares / totalSupply();
+            if (withdrawAmount > 0) {
                 // pay withdraw fees
-                amountQuote = takeWithdrawFees(quoteToken, amountQuote);
-                IERC20(quoteToken).safeTransfer(msg.sender, amountQuote);
+                withdrawAmount = takeDepositFees(quoteToken, withdrawAmount, false);
+                IERC20(quoteToken).safeTransfer(msg.sender, withdrawAmount);
             }
         }
 
         if (position == 1) {
 
-            uint256 amountBase = IERC20(baseToken).balanceOf(address(this)) * shares / totalSupply();
-            uint256[] memory amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(amountBase, pathBackward);
+            withdrawAmount = IERC20(baseToken).balanceOf(address(this)) * shares / totalSupply();
+            uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(withdrawAmount, pathBackward);
             
             uint256 thisSoldAmount = soldAmount * shares / totalSupply();
-            uint256 _profit = profit * amounts[amounts.length - 1] / thisSoldAmount;
-            if (_profit > percentMax) {
+            uint256 _profit = profit * amounts[1] / thisSoldAmount;
+            if (_profit > PERCENT_MAX) {
 
-                uint256 profitAmount = amountBase * (_profit - percentMax) / _profit;
-                uint256 feeAmount = takePerfFeesFromBaseToken(profitAmount);
-                amountBase = amountBase - feeAmount;
+                uint256 profitAmount = withdrawAmount * (_profit - PERCENT_MAX) / _profit;
+                uint256 feeAmount = takePerfFees(baseToken, profitAmount);
+                withdrawAmount = withdrawAmount - feeAmount;
             }
             soldAmount = soldAmount - thisSoldAmount;
             
-            if (amountBase > 0) {
+            if (withdrawAmount > 0) {
                 // pay withdraw fees
-                amountBase = takeWithdrawFees(baseToken, amountBase);
-                IERC20(baseToken).safeTransfer(msg.sender, amountBase);
+                withdrawAmount = takeDepositFees(baseToken, withdrawAmount, false);
+                IERC20(baseToken).safeTransfer(msg.sender, withdrawAmount);
             }
         }
 
@@ -348,69 +328,59 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     function buyUniswap() external nonReentrant {
         
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
-
-        // 0. check whitelist
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
         require(whiteList[msg.sender], "Not whitelisted");
-
-        // 1. Check if the vault is in closed position
         require(position == 0, "Not valid position");
 
-        // 2. get the amount of quoteToken to trade
+        // 1. get the amount of quoteToken to trade
         uint256 amount = IERC20(quoteToken).balanceOf(address(this));
         require (amount > 0, "No enough amount");
 
-        // 3. takeTradingFees
-        uint256 feeAmount = calcTradingFee(amount);
-        amount = takeTradingFees(quoteToken, amount, feeAmount);
+        // 2. takeTradingFees
+        amount = takeTradingFees(quoteToken, amount);
 
-        // 4. save the remaining to soldAmount
+        // 3. save the quote amount as soldAmount
         soldAmount = amount;
 
-        // 5. swap tokens to B
-        _swapPancakeswap(quoteToken, baseToken, amount);
+        // 4. swap tokens to Base
+        _swapUniswap(quoteToken, baseToken, amount);
+        amount = IERC20(baseToken).balanceOf(address(this));
 
-        // 6. update position
+        // 5. update position
         position = 1;
         
+        // 6. emit event
+        emit TradeDone(position, soldAmount, amount);
+
         lastBlockNumber[msg.sender] = block.number;
     }
 
     function sellUniswap() external nonReentrant {
         
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
-
-        // 0. check whitelist
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
         require(whiteList[msg.sender], "Not whitelisted");
-
-        // 1. check if the vault is in open position
         require(position == 1, "Not valid position");
 
-        // 2. get the amount of baseToken to trade
+        // 1. get the amount of baseToken to trade
         uint256 amount = IERC20(baseToken).balanceOf(address(this));
+        require (amount > 0, "No enough amount");
+        
+        // 2. takeTradingFees
+        amount = takeTradingFees(baseToken, amount);
 
-        if (amount > 0) {
+        // 3. swap tokens to Quote and get the newly create quoteToken
+        _swapUniswap(baseToken, quoteToken, amount);
+        amount = IERC20(quoteToken).balanceOf(address(this));
 
-            // 3. takeUpbotsFee
-            uint256 feeAmount = calcTradingFee(amount);
-            amount = takeTradingFees(baseToken, amount, feeAmount);
+        // 4. calculate the profit in percent
+        profit = profit * amount / soldAmount;
 
-            // 3. swap tokens to Quote and get the newly create quoteToken
-            uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-            _swapPancakeswap(baseToken, quoteToken, amount);
-            uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-            amount = _after - _before;
+        // 5. take performance fees in case of profit
+        if (profit > PERCENT_MAX) {
 
-            // 4. calculate the profit in percent
-            profit = profit * amount / soldAmount;
-
-            // 5. take performance fees in case of profit
-            if (profit > percentMax) {
-
-                uint256 profitAmount = amount * (profit - percentMax) / profit;
-                takePerfFees(profitAmount);
-                profit = percentMax;
-            }
+            uint256 profitAmount = amount * (profit - PERCENT_MAX) / profit;
+            takePerfFees(quoteToken, profitAmount);
+            profit = PERCENT_MAX;
         }
 
         // 6. update soldAmount
@@ -424,29 +394,24 @@ contract VaultETH is ERC20, ReentrancyGuard {
 
     function buy(bytes calldata swapCallData) external nonReentrant {
         
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
-
-        // 0. check whitelist
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
         require(whiteList[msg.sender], "Not whitelisted");
-
-        require(aggregatorAddr != address(0));
-
-        // 1. Check if the vault is in closed position
         require(position == 0, "Not valid position");
 
-        // 2. get the amount of quoteToken to trade
-        uint256 quoteAmount = IERC20(quoteToken).balanceOf(address(this));
-        require (quoteAmount > 0, "No enough quoteAmount");
+        // 1. get the amount of quoteToken to trade
+        uint256 amount = IERC20(quoteToken).balanceOf(address(this));
+        require (amount > 0, "No enough quoteAmount");
 
-        // 3. calc quote fee amount
-        uint256 quoteFeeAmount = calcTradingFee(quoteAmount);
+        // 2. takeTradingFees
+        amount = takeTradingFees(quoteToken, amount);
+
+        // 3. get uniswap swap amount
+        uint256[] memory expectedAmount = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(amount, pathForward);
 
         // 4. save the remaining to soldAmount
-        soldAmount = quoteAmount - quoteFeeAmount;
+        soldAmount = amount;
 
-        // 5. swap tokens to B
-        uint256 _before = IERC20(baseToken).balanceOf(address(this));
-
+        // 5. swap tokens to Base
         (bool success,) = aggregatorAddr.call(swapCallData);
         
         if (!success) {
@@ -457,46 +422,36 @@ contract VaultETH is ERC20, ReentrancyGuard {
             }
         }
 
-        uint256 _after = IERC20(baseToken).balanceOf(address(this));
+        // 6. check swapped amount
+        amount = IERC20(baseToken).balanceOf(address(this));
+        require (amount >= expectedAmount[1] * 90 / 100, "Swapped amount is not enough");
 
-        // 6. takeTradingFees
-        uint256 baseAmount = _after - _before;
-        uint256 baseFeeAmount = calcTradingFee(baseAmount);
-        takeTradingFees(baseToken, baseAmount, baseFeeAmount);
-
-        // 6. update position
+        // 7. update position
         position = 1;
 
-        // emit event        
-        emit TradeDone(position, quoteAmount, quoteFeeAmount, profit);
+        // 8. emit event
+        emit TradeDone(1, soldAmount, amount);
         
         lastBlockNumber[msg.sender] = block.number;
     }
 
     function sell(bytes calldata swapCallData) external nonReentrant {
         
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
-        
-        // 0. check whitelist
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
         require(whiteList[msg.sender], "Not whitelisted");
-
-        require(aggregatorAddr != address(0));
-
-        // 1. check if the vault is in open position
         require(position == 1, "Not valid position");
 
         // 2. get the amount of baseToken to trade
         uint256 baseAmount = IERC20(baseToken).balanceOf(address(this));
-
         require (baseAmount > 0, "No enough baseAmount");
 
-
         // 3. calc base fee amount
-        uint256 baseFeeAmount = calcTradingFee(baseAmount);
+        baseAmount = takeTradingFees(baseToken, baseAmount);
+
+        // 3. calc min swapped amount
+        uint256[] memory expectedAmount = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(baseAmount, pathBackward);
 
         // 4. swap tokens to Quote and get the newly create quoteToken
-        uint256 _before = IERC20(quoteToken).balanceOf(address(this));
-
         (bool success,) = aggregatorAddr.call(swapCallData);
         
         if (!success) {
@@ -507,22 +462,19 @@ contract VaultETH is ERC20, ReentrancyGuard {
             }
         }
 
-        uint256 _after = IERC20(quoteToken).balanceOf(address(this));
-
-        // 5. takeUpbotsFee
-        uint256 quoteAmount = _after - _before;
-        uint256 quoteFeeAmount = calcTradingFee(quoteAmount);
-        uint256 amount = takeTradingFees(quoteToken, quoteAmount, quoteFeeAmount);
-
+        // 6. check swapped amount
+        uint256 quoteAmount = IERC20(quoteToken).balanceOf(address(this));
+        require (quoteAmount >= expectedAmount[1] * 90 / 100, "Swapped amount is not enough");
+        
         // 5. calculate the profit in percent
-        profit = profit * amount / soldAmount;
+        profit = profit * quoteAmount / soldAmount;
 
         // 6. take performance fees in case of profit
-        if (profit > percentMax) {
+        if (profit > PERCENT_MAX) {
 
-            uint256 profitAmount = amount * (profit - percentMax) / profit;
-            takePerfFees(profitAmount);
-            profit = percentMax;
+            uint256 profitAmount = quoteAmount * (profit - PERCENT_MAX) / profit;
+            takePerfFees(quoteToken, profitAmount);
+            profit = PERCENT_MAX;
         }
 
         // 7. update soldAmount
@@ -532,12 +484,12 @@ contract VaultETH is ERC20, ReentrancyGuard {
         position = 0;
 
         // emit event
-        emit TradeDone(position, baseAmount, baseFeeAmount, profit);
+        emit TradeDone(0, baseAmount, quoteAmount);
         
         lastBlockNumber[msg.sender] = block.number;
     }
 
-    function takeDepositFees(address token, uint256 amount) private returns(uint256) {
+    function takeDepositFees(address token, uint256 amount, bool isDeposit) private returns(uint256) {
         
         if (amount == 0) {
             return 0;
@@ -547,160 +499,93 @@ contract VaultETH is ERC20, ReentrancyGuard {
             return amount;
         }
 
-        uint256 fees = amount * pctDeposit / percentMax;
+        uint256 fees = amount * (isDeposit ? pctDeposit : pctWithdraw) / PERCENT_MAX;
         IERC20(token).safeTransfer(addrPartner, fees);
         return amount - fees;
     }
     
-    function takeWithdrawFees(address token, uint256 amount) private returns(uint256) {
-        
-        if (amount == 0) {
-            return 0;
-        }
-
-        if (!isForPartner) {
-            return amount;
-        }
-
-        uint256 fees = amount * pctWithdraw / percentMax;
-        IERC20(token).safeTransfer(addrPartner, fees);
-        return amount - fees;
-    }
-
-    function calcTradingFee(uint256 amount) internal view returns(uint256) {
-        return amount * pctTradUpbots / percentMax;
-    }
-
-    function takeTradingFees(address token, uint256 amount, uint256 fee) private returns(uint256) {
+    function takeTradingFees(address token, uint256 amount) private returns(uint256) {
         if (amount == 0) {
             return 0;
         }
 
         // swap to UBXT
-        uint256 _before = IERC20(ubxt).balanceOf(address(this));
+        uint256 fee = amount * pctTradUpbots / PERCENT_MAX;
+        uint256 _before = IERC20(UBXT).balanceOf(address(this));
         _swapToUBXT(token, fee);
-        uint256 _after = IERC20(ubxt).balanceOf(address(this));
-        uint256 ubxtAmt = _after - _before;
+        uint256 _after = IERC20(UBXT).balanceOf(address(this));
+        uint256 UBXTAmt = _after - _before;
 
         // transfer to company wallet
-        IERC20(ubxt).safeTransfer(addrUpbots, ubxtAmt);
+        IERC20(UBXT).safeTransfer(addrUpbots, UBXTAmt);
         
         // return remaining token amount 
         return amount - fee;
     }
     
-    function takePerfFees(uint256 amount) private {
-        if (amount == 0) {
-            return ;
-        }
-
-        // calculate fees
-        uint256 burnAmount = amount * pctPerfBurning / percentMax;
-        uint256 stakersAmount = amount * pctPerfStakers / percentMax;
-        uint256 devAmount = amount * pctPerfAlgoDev / percentMax;
-        uint256 pctCompany = isForPartner ? pctPerfPartners : pctPerfUpbots;
-        address addrCompany = isForPartner ? addrPartner : addrUpbots;
-        uint256 companyAmount = amount * pctCompany / percentMax;
-        
-        // swap to UBXT
-        uint256 _total = stakersAmount + devAmount + burnAmount + companyAmount;
-        uint256 _before = IERC20(ubxt).balanceOf(address(this));
-        _swapToUBXT(quoteToken, _total);
-        uint256 _after = IERC20(ubxt).balanceOf(address(this));
-        uint256 ubxtAmt = _after - _before;
-
-        // calculate UBXT amounts
-        stakersAmount = ubxtAmt * stakersAmount / _total;
-        devAmount = ubxtAmt * devAmount / _total;
-        companyAmount = ubxtAmt * companyAmount / _total;
-        burnAmount = ubxtAmt - stakersAmount - devAmount - companyAmount;
-
-        // Transfer
-        IERC20(ubxt).safeTransfer(
-            burnAddress, // burn
-            burnAmount
-        );
-        
-        IERC20(ubxt).safeTransfer(
-            addrStakers, // stakers
-            stakersAmount
-        );
-
-        IERC20(ubxt).safeTransfer(
-            addrAlgoDev, // algodev
-            devAmount
-        );
-
-        IERC20(ubxt).safeTransfer(
-            addrCompany, // company (upbots or partner)
-            companyAmount
-        );
-    }
-
-    function takePerfFeesFromBaseToken(uint256 amount) private returns(uint256) {
-
+    function takePerfFees(address token, uint256 amount) private returns(uint256) {
         if (amount == 0) {
             return 0;
         }
 
         // calculate fees
-        uint256 burnAmount = amount * pctPerfBurning / percentMax;
-        uint256 stakersAmount = amount * pctPerfStakers / percentMax;
-        uint256 devAmount = amount * pctPerfAlgoDev / percentMax;
+        uint256 burnAmount = amount * pctPerfBurning / PERCENT_MAX;
+        uint256 stakersAmount = amount * pctPerfStakers / PERCENT_MAX;
+        uint256 devAmount = amount * pctPerfAlgoDev / PERCENT_MAX;
+        uint256 pctCompany = isForPartner ? pctPerfPartners : pctPerfUpbots;
+        address addrCompany = isForPartner ? addrPartner : addrUpbots;
+        uint256 companyAmount = amount * pctCompany / PERCENT_MAX;
         
         // swap to UBXT
-        uint256 _total = stakersAmount + devAmount + burnAmount;
-        uint256 _before = IERC20(ubxt).balanceOf(address(this));
-        uint256 _tokenbBefore = IERC20(baseToken).balanceOf(address(this));
-        _swapToUBXT(baseToken, _total);
-        uint256 _after = IERC20(ubxt).balanceOf(address(this));
-        uint256 _tokenbAfter = IERC20(baseToken).balanceOf(address(this));
-        
-        uint256 ubxtAmt = _after - _before;
-        uint256 feeAmount = _tokenbBefore - _tokenbAfter;
+        uint256 _total = stakersAmount + devAmount + burnAmount + companyAmount;
+
+        uint256 _tokenBefore = IERC20(token).balanceOf(address(this));
+        uint256 _before = IERC20(UBXT).balanceOf(address(this));
+        _swapToUBXT(token, _total);
+        uint256 _after = IERC20(UBXT).balanceOf(address(this));
+        uint256 _tokenAfter = IERC20(baseToken).balanceOf(address(this));
+
+        uint256 UBXTAmt = _after - _before;
+        uint256 feeAmount = _tokenBefore - _tokenAfter;
 
         // calculate UBXT amounts
-        stakersAmount = ubxtAmt * stakersAmount / _total;
-        devAmount = ubxtAmt * devAmount / _total;
-        burnAmount = ubxtAmt - stakersAmount - devAmount;
+        stakersAmount = UBXTAmt * stakersAmount / _total;
+        devAmount = UBXTAmt * devAmount / _total;
+        companyAmount = UBXTAmt * companyAmount / _total;
+        burnAmount = UBXTAmt - stakersAmount - devAmount - companyAmount;
 
         // Transfer
-        IERC20(ubxt).safeTransfer(
-            burnAddress,
+        IERC20(UBXT).safeTransfer(
+            BURN_ADDRESS, // burn
             burnAmount
         );
         
-        IERC20(ubxt).safeTransfer(
-            addrStakers,
+        IERC20(UBXT).safeTransfer(
+            addrStakers, // stakers
             stakersAmount
         );
 
-        IERC20(ubxt).safeTransfer(
-            addrAlgoDev,
+        IERC20(UBXT).safeTransfer(
+            addrAlgoDev, // algodev
             devAmount
         );
 
+        IERC20(UBXT).safeTransfer(
+            addrCompany, // company (upbots or partner)
+            companyAmount
+        );
+        
         return feeAmount;
     }
 
     // *** internal functions ***
 
-    function _calculateQuoteFromBase() internal view returns(uint256) {
-        uint256 amountBase = IERC20(baseToken).balanceOf(address(this));
-
-        if (amountBase < SWAP_MIN) {
-            return 0;
-        }
-        uint256[] memory amounts = UniswapRouterV2(pancakeRouter).getAmountsOut(amountBase, pathBackward);
-        return amounts[amounts.length - 1];
+    function approveTokensForAggregator() internal {
+        assert(IERC20(quoteToken).approve(aggregatorAddr, MAX_APPROVAL));
+        assert(IERC20(baseToken).approve(aggregatorAddr, MAX_APPROVAL));
     }
 
-    function approveTokensForOneinch() internal {
-        assert(IERC20(quoteToken).approve(aggregatorAddr, MAX));
-        assert(IERC20(baseToken).approve(aggregatorAddr, MAX));
-    }
-
-    function _swapPancakeswap(
+    function _swapUniswap(
         address _from,
         address _to,
         uint256 _amount
@@ -708,8 +593,8 @@ contract VaultETH is ERC20, ReentrancyGuard {
         require(_to != address(0));
 
         // Swap with uniswap
-        assert(IERC20(_from).approve(pancakeRouter, 0));
-        assert(IERC20(_from).approve(pancakeRouter, _amount));
+        assert(IERC20(_from).approve(UNISWAP_ROUTER, 0));
+        assert(IERC20(_from).approve(UNISWAP_ROUTER, _amount));
 
         address[] memory path;
 
@@ -717,15 +602,14 @@ contract VaultETH is ERC20, ReentrancyGuard {
         path[0] = _from;
         path[1] = _to;
 
-        uint256[] memory amountOutMins = UniswapRouterV2(pancakeRouter).getAmountsOut(
+        uint256[] memory amountOutMins = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(
             _amount,
             path
         );
-        uint256 amountOutMin = amountOutMins[path.length -1].mul(100 - pancakeswapSlippage).div(100);
 
-        uint256[] memory amounts = UniswapRouterV2(pancakeRouter).swapExactTokensForTokens(
+        uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).swapExactTokensForTokens(
             _amount,
-            amountOutMin,
+            amountOutMins[1] * 90 / 100,
             path,
             address(this),
             block.timestamp + 60
@@ -742,39 +626,38 @@ contract VaultETH is ERC20, ReentrancyGuard {
     ) internal {
 
         // Swap with uniswap
-        assert(IERC20(_from).approve(sushiRouter, 0));
-        assert(IERC20(_from).approve(sushiRouter, _amount));
+        assert(IERC20(_from).approve(SUSHISWAP_ROUTER, 0));
+        assert(IERC20(_from).approve(SUSHISWAP_ROUTER, _amount));
 
         address[] memory path;
 
         if (_from == WETH) {
             path = new address[](2);
             path[0] = _from;
-            path[1] = ubxt;
+            path[1] = UBXT;
         } 
         else if (_from == quoteToken) {
             path = new address[](3);
             path[0] = _from;
             path[1] = WETH;
-            path[2] = ubxt;
+            path[2] = UBXT;
         }
         else {
             path = new address[](4);
             path[0] = _from;
             path[1] = quoteToken;
             path[2] = WETH;
-            path[3] = ubxt;
+            path[3] = UBXT;
         }
 
-        uint256[] memory amountOutMins = UniswapRouterV2(sushiRouter).getAmountsOut(
+        uint256[] memory amountOutMins = UniswapRouterV2(SUSHISWAP_ROUTER).getAmountsOut(
             _amount,
             path
         );
-        uint256 amountOutMin = amountOutMins[path.length -1].mul(100 - pancakeswapSlippage).div(100);
 
-        uint256[] memory amounts = UniswapRouterV2(sushiRouter).swapExactTokensForTokens(
+        uint256[] memory amounts = UniswapRouterV2(SUSHISWAP_ROUTER).swapExactTokensForTokens(
             _amount,
-            amountOutMin,
+            amountOutMins[1] * 90 / 100,
             path,
             address(this),
             block.timestamp + 60
@@ -783,10 +666,10 @@ contract VaultETH is ERC20, ReentrancyGuard {
         require(amounts[0] > 0, "Not valid return amount in pancakeswap");
     }
 
-    function _beforeTokenTransfer(address from, address to, uint256 amount)
+    function _beforeTokenTransfer(address , address , uint256 )
         internal virtual override
     {
-        require (block.number > lastBlockNumber[msg.sender], "allowed only one transaction per block");
+        require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
         lastBlockNumber[msg.sender] = block.number;
     }
 }
