@@ -6,26 +6,24 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "../interfaces/uniswapv2.sol";
 
 import "../interfaces/oneinch.sol";
 
-contract VaultETH is ERC20, Ownable, ReentrancyGuard {
+contract VaultETH is ERC20, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
     string public vaultName;
-    bool public isForPartner;
 
     address public quoteToken;
     address public baseToken;
     address public aggregatorAddr;
+    address public strategist;
 
     mapping(address => bool) public whiteList;
 
     uint256 public maxCap = 0;
-    uint256 public minDeposit = 10 ** 17;
     uint256 public position = 0; // 0: closed, 1: opened
     uint256 public soldAmount = 0;
     uint256 public profit = PERCENT_MAX;
@@ -62,16 +60,17 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
     address public addrPartner;
     address public addrFactory;
 
+    bool public isForPartner;
+    
     // last block number
     mapping(address => uint) public lastBlockNumber;
 
     event Received(address, uint);
-    event AddressesUpdated(address, address, address, address);
-    event FeesUpdated(uint16, uint16, uint16, uint16, uint16);
-    event CapLimitsUpdated(uint256, uint256);
+    event ParametersUpdated(uint16, uint16, uint16, uint16, uint16, address, address, address, address, uint256);
     event WhiteListAdded(address);
     event WhiteListRemoved(address);
     event TradeDone(uint256, uint256, uint256);
+    event StrategistUpdated(address);
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
@@ -81,6 +80,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         string memory _name,
         address _quoteToken,
         address _baseToken,
+        address _strategist,
         address _aggregatorAddr
     )
         ERC20(
@@ -88,8 +88,10 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
             string(abi.encodePacked("xUBXT_", _name))
         )
     {
-        require(_quoteToken != address(0), "invalid quoteToken address");
-        require(_baseToken != address(0), "invalid baseToken address");
+        require(_quoteToken != address(0));
+        require(_baseToken != address(0));
+        require(_strategist != address(0));
+        require(_aggregatorAddr != address(0));
 
         vaultName = _name;
         quoteToken = _quoteToken;
@@ -97,7 +99,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         aggregatorAddr = _aggregatorAddr;
 
         isForPartner = false;
-        whiteList[msg.sender] = true;
+        strategist = _strategist;
         addrFactory = msg.sender;
 
         pathBackward = new address[](2);
@@ -112,19 +114,29 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         approveTokensForAggregator();
     }
 
-    function updateFees(
+    function updateParameters(
         uint16 _pctDeposit,
         uint16 _pctWithdraw,
         uint16 _pctTradUpbots,
         uint16 _pctPerfAlgoDev,
-        uint16 _pctPerfPartner
-    ) external onlyOwner {
+        uint16 _pctPerfPartner,
+        address _addrStakers,
+        address _addrAlgoDev,
+        address _addrUpbots,
+        address _addrPartner,
+        uint256 _maxCap
+    ) external {
 
-        require(_pctDeposit < PERCENT_MAX, "invalid deposit fee percentage");
-        require(_pctWithdraw < PERCENT_MAX, "invalid withdraw fee percentage");
-        require(_pctTradUpbots < PERCENT_MAX, "invalid trade fee percentage");
-        require(_pctPerfAlgoDev < PERCENT_MAX, "invalid algo dev performance fee");
+        require(msg.sender == strategist, "Not strategist");
+        require(_pctDeposit < PERCENT_MAX, "invalid deposit fee");
+        require(_pctWithdraw < PERCENT_MAX, "invalid withdraw fee");
+        require(_pctTradUpbots < PERCENT_MAX, "invalid trade fee");
+        require(_pctPerfAlgoDev < PERCENT_MAX, "invalid algo dev fee");
         require(_pctPerfPartner < PERCENT_MAX, "invalid partner fee");
+
+        require(_addrStakers != address(0));
+        require(_addrAlgoDev != address(0));
+        require(_addrUpbots != address(0));
 
         pctDeposit = _pctDeposit;
         pctWithdraw = _pctWithdraw;
@@ -132,48 +144,34 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         pctPerfAlgoDev = _pctPerfAlgoDev;
         pctPerfPartners = _pctPerfPartner;
         
-        emit FeesUpdated(pctDeposit, pctWithdraw, pctTradUpbots, pctPerfAlgoDev, pctPerfPartners);
-    }
-
-    function updateAddresses(
-        address _addrStakers,
-        address _addrAlgoDev,
-        address _addrUpbots,
-        address _addrPartner
-    ) external onlyOwner {
-        
-        require(_addrStakers != address(0), "invalid stakers address");
-        require(_addrAlgoDev != address(0), "invalid algo dev address");
-        require(_addrUpbots != address(0), "invalid upbots address");
-
         addrStakers = _addrStakers;
         addrAlgoDev = _addrAlgoDev;
         addrUpbots = _addrUpbots;
         addrPartner = _addrPartner;
 
         isForPartner = _addrPartner != address(0);
-        
-        emit AddressesUpdated(addrStakers, addrAlgoDev, addrUpbots, addrPartner);
-    }
 
-    function updateCapLimits(
-        uint256 _maxCap,
-        uint256 _minDeposit
-    ) external onlyOwner {
-        
         maxCap = _maxCap;
-        minDeposit = _minDeposit;
 
-        emit CapLimitsUpdated(maxCap, minDeposit);
+        emit ParametersUpdated(pctDeposit, pctWithdraw, pctTradUpbots, pctPerfAlgoDev, pctPerfPartners, addrStakers, addrAlgoDev, addrUpbots, addrPartner, maxCap);
     }
 
-    function addToWhiteList(address _address) external onlyOwner {
+    function setStrategist(address _address) external {
+        require(msg.sender == strategist, "Not strategist");
+        require(_address != address(0), "invalid address");
+        strategist = _address;
+        emit StrategistUpdated(_address);
+    }
+
+    function addToWhiteList(address _address) external {
+        require(msg.sender == strategist, "Not strategist");
         require(_address != address(0), "invalid address");
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
-    function removeFromWhiteList(address _address) external onlyOwner {
+    function removeFromWhiteList(address _address) external {
+        require(msg.sender == strategist, "Not strategist");
         require(_address != address(0), "invalid address");
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);
@@ -183,25 +181,22 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
 
         require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
 
-        // 1. Check min deposit
-        require (amount >= minDeposit, "invalid deposit amount");
-
-        // 2. Check max cap
+        // 1. Check max cap
         uint256 _poolSize;
         uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(IERC20(baseToken).balanceOf(address(this)), pathBackward);
         _poolSize = amounts[1] + IERC20(quoteToken).balanceOf(address(this)); // get approximate pool size to compare with max cap
         require (maxCap == 0 || _poolSize + amount < maxCap, "The vault reached the max cap");
 
-        // 3. transfer quote from sender to this vault
+        // 2. transfer quote from sender to this vault
         uint256 _before = IERC20(quoteToken).balanceOf(address(this));
         IERC20(quoteToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 _after = IERC20(quoteToken).balanceOf(address(this));
         amount = _after - _before; // Additional check for deflationary tokens
 
-        // 4. pay deposit fees
+        // 3. pay deposit fees
         amount = takeDepositFees(quoteToken, amount, true);
 
-        // 5. swap Quote to Base if position is opened
+        // 4. swap Quote to Base if position is opened
         if (position == 1) {
             soldAmount = soldAmount + amount;
 
@@ -213,7 +208,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
             _poolSize = _before;
         }
 
-        // 6. calculate share and send back xUBXT
+        // 5. calculate share and send back xUBXT
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
@@ -221,6 +216,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         else {
             shares = amount * totalSupply() / _poolSize;
         }
+        require (shares > 0, "failure in share calculation");
         _mint(msg.sender, shares);
 
         lastBlockNumber[msg.sender] = block.number;
@@ -230,13 +226,9 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         
         require (block.number > lastBlockNumber[msg.sender], "allowed only one call per block");
 
-        // . Check min amount
-        uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(minDeposit, pathForward);
-        require (amount >= amounts[1], "invalid deposit amount");
-
         // . Check max cap
         uint256 _poolSize;
-        amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(IERC20(baseToken).balanceOf(address(this)), pathBackward);
+        uint256[] memory amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(IERC20(baseToken).balanceOf(address(this)), pathBackward);
         _poolSize = amounts[1] + IERC20(quoteToken).balanceOf(address(this)); // get approximate pool size to compare with max cap
         amounts = UniswapRouterV2(UNISWAP_ROUTER).getAmountsOut(amount, pathBackward);
         require (maxCap == 0 || _poolSize + amounts[1] < maxCap, "The vault reached the max cap");
@@ -275,6 +267,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         } else {
             shares = amount * totalSupply() / _poolSize;
         }
+        require (shares > 0, "failure in share calculation");
         _mint(msg.sender, shares);
 
         lastBlockNumber[msg.sender] = block.number;
@@ -514,10 +507,10 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         uint256 _before = IERC20(UBXT).balanceOf(address(this));
         _swapToUBXT(token, fee);
         uint256 _after = IERC20(UBXT).balanceOf(address(this));
-        uint256 UBXTAmt = _after - _before;
+        uint256 ubxtAmt = _after - _before;
 
         // transfer to company wallet
-        IERC20(UBXT).safeTransfer(addrUpbots, UBXTAmt);
+        IERC20(UBXT).safeTransfer(addrUpbots, ubxtAmt);
         
         // return remaining token amount 
         return amount - fee;
@@ -545,14 +538,14 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         uint256 _after = IERC20(UBXT).balanceOf(address(this));
         uint256 _tokenAfter = IERC20(baseToken).balanceOf(address(this));
 
-        uint256 UBXTAmt = _after - _before;
+        uint256 ubxtAmt = _after - _before;
         uint256 feeAmount = _tokenBefore - _tokenAfter;
 
         // calculate UBXT amounts
-        stakersAmount = UBXTAmt * stakersAmount / _total;
-        devAmount = UBXTAmt * devAmount / _total;
-        companyAmount = UBXTAmt * companyAmount / _total;
-        burnAmount = UBXTAmt - stakersAmount - devAmount - companyAmount;
+        stakersAmount = ubxtAmt * stakersAmount / _total;
+        devAmount = ubxtAmt * devAmount / _total;
+        companyAmount = ubxtAmt * companyAmount / _total;
+        burnAmount = ubxtAmt - stakersAmount - devAmount - companyAmount;
 
         // Transfer
         IERC20(UBXT).safeTransfer(
@@ -590,8 +583,6 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
         address _to,
         uint256 _amount
     ) internal {
-        require(_to != address(0));
-
         // Swap with uniswap
         assert(IERC20(_from).approve(UNISWAP_ROUTER, 0));
         assert(IERC20(_from).approve(UNISWAP_ROUTER, _amount));
@@ -615,7 +606,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
             block.timestamp + 60
         );
 
-        require(amounts[0] > 0, "Not valid return amount in pancakeswap");
+        require(amounts[0] > 0, "invalid swap result");
     }
     
     // _to is supposed to be UBXT
@@ -663,7 +654,7 @@ contract VaultETH is ERC20, Ownable, ReentrancyGuard {
             block.timestamp + 60
         );
 
-        require(amounts[0] > 0, "Not valid return amount in pancakeswap");
+        require(amounts[0] > 0, "invalid swap result");
     }
 
     function _beforeTokenTransfer(address , address , uint256 )

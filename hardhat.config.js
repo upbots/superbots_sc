@@ -2,7 +2,6 @@ require("dotenv").config({ path: "./.env" });
 require("@nomiclabs/hardhat-ethers");
 require("@nomiclabs/hardhat-waffle");
 require("hardhat-deploy");
-require("hardhat-deploy-ethers");
 require("@nomiclabs/hardhat-web3");
 require("solidity-coverage");
 require("@nomiclabs/hardhat-etherscan");
@@ -40,25 +39,19 @@ module.exports = {
       saveDeployments: false,
     },
     hardhat: {
-      blockGasLimit: 10000000000000,
-      gas: 200000000000,
-      saveDeployments: false,
-      initialBaseFeePerGas: 0,
-      hardfork: "london",
+      forking: {
+        url: `https://bsc-dataseed.binance.org`,
+        // blockNumber: 23271211
+      }
     },
     mainnet: {
       ...sharedNetworkConfig,
       url: `https://mainnet.infura.io/v3/${INFURA_API_KEY}`,
       saveDeployments: true,
     },
-    rinkeby: {
+    goerli: {
       ...sharedNetworkConfig,
-      url: `https://rinkeby.infura.io/v3/${INFURA_API_KEY}`,
-      saveDeployments: true,
-    },
-    ropsten: {
-      ...sharedNetworkConfig,
-      url: `https://ropsten.infura.io/v3/${INFURA_API_KEY}`,
+      url: `https://goerli.infura.io/v3/${INFURA_API_KEY}`,
       saveDeployments: true,
     },
     ganache: {
@@ -129,6 +122,7 @@ module.exports = {
       mainnet: ETHERSCAN_API_KEY,
       rinkeby: ETHERSCAN_API_KEY,
       ropsten: ETHERSCAN_API_KEY,
+      goerli: ETHERSCAN_API_KEY,
       // binance smart chain
       bsc: BSCSCAN_API_KEY,
       bscTestnet: BSCSCAN_API_KEY,
