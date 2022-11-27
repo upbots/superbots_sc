@@ -1,12 +1,12 @@
-const contractName = "MasterSuperVaultETH";
+const contractName = "MasterSuperVault";
 
-const { sleep }  = require("../utils/sleep")
+const { sleep }  = require("../../utils/sleep")
 
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
 
 const name="MASTER SUPER VAULT";
-const capitalToken = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // BUSD (mainnet)
+const capitalToken = "0xe9e7cea3dedca5984780bafc599bd69add087d56"; // BUSD (mainnet)
 const maxCap = "1000000000000000000000000000000000000";
 
 const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades, run }) => {
@@ -26,7 +26,7 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
     await run("verify:verify", {
         address: contract.address,
         constructorArguments: [name, capitalToken, maxCap],
-        contract: "contracts/eth/master_vault.sol:MasterSuperVaultETH"
+        contract: "contracts/master_vault.sol:MasterSuperVault"
     })
   }
 };
@@ -36,8 +36,8 @@ module.exports.tags = [contractName];
 
 
 // ***** Deploying *****
-// npx hardhat deploy --network bsc --tags MasterSuperVaultETH
-// npx hardhat deploy --network ropsten --tags MasterSuperVaultETH
+// npx hardhat deploy --network bsc --tags MasterSuperVault
+// npx hardhat deploy --network ropsten --tags MasterSuperVault
 
 
 // bsc: 

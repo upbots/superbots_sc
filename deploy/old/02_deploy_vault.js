@@ -1,13 +1,12 @@
-const contractName = "VaultETH";
+const contractName = "Vault";
 
-const { sleep }  = require("../utils/sleep")
-const { params }  = require("../inputs/vault_eth.js")
-const param = params[0]
+const { sleep }  = require("../../utils/sleep")
+const { params }  = require("../inputs/vault")
+const param = params[1]
 
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
 const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades, run }) => {
-  
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
@@ -54,7 +53,7 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
           param.percentTradUpbots,          
           param.maxCap
         ],
-        contract: "contracts/eth/vault.sol:VaultETH"
+        contract: "contracts/vault.sol:Vault"
     })
   }
 };
@@ -64,8 +63,8 @@ module.exports.tags = [contractName];
 
 
 // ***** Deploying *****
-// npx hardhat deploy --network mainnet --tags VaultETH
-// npx hardhat deploy --network ropsten --tags VaultETH
+// npx hardhat deploy --network bsc --tags Vault
+// npx hardhat deploy --network ropsten --tags Vault
 
 
 // bsc: 0x6c4ccD5b9f9fb5364848489E651D22d2B33d91C4, 0xa25CDc2152908dBfd69cFC20734F19ade9a06b03
