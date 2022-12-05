@@ -16,9 +16,9 @@ struct VaultParams {
     address baseToken;
     address aggregatorAddr;
     address mainRouter;
-    address ubxtPoolRouter;
-    address ubxtToken;
-    address ubxtPairToken;
+    address ubxnPoolRouter;
+    address ubxnToken;
+    address ubxnPairToken;
     address quotePriceFeed;
     address basePriceFeed;
     uint256 maxCap;
@@ -79,8 +79,8 @@ contract Vault2 is ERC20, ReentrancyGuard {
 
     constructor(string memory _name, address _strategist)
         ERC20(
-            string(abi.encodePacked("xUBXT_", _name)),
-            string(abi.encodePacked("xUBXT_", _name))
+            string(abi.encodePacked("xUBXN_", _name)),
+            string(abi.encodePacked("xUBXN_", _name))
         )
     {
         require(_strategist != address(0));
@@ -101,9 +101,9 @@ contract Vault2 is ERC20, ReentrancyGuard {
         require(_vaultParams.baseToken != address(0));
         require(_vaultParams.aggregatorAddr != address(0));
         require(_vaultParams.mainRouter != address(0));
-        require(_vaultParams.ubxtPoolRouter != address(0));
-        require(_vaultParams.ubxtToken != address(0));
-        require(_vaultParams.ubxtPairToken != address(0));
+        require(_vaultParams.ubxnPoolRouter != address(0));
+        require(_vaultParams.ubxnToken != address(0));
+        require(_vaultParams.ubxnPairToken != address(0));
         require(_vaultParams.quotePriceFeed != address(0));
         require(_vaultParams.basePriceFeed != address(0));
 
@@ -204,7 +204,7 @@ contract Vault2 is ERC20, ReentrancyGuard {
             _poolSize = _before;
         }
 
-        // 5. calculate share and send back xUBXT
+        // 5. calculate share and send back xUBXN
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
@@ -269,7 +269,7 @@ contract Vault2 is ERC20, ReentrancyGuard {
             soldAmount = soldAmount + (_price * amount) / PRICE_DECIMALS;
         }
 
-        // 5. calculate share and send back xUBXT
+        // 5. calculate share and send back xUBXN
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
@@ -500,19 +500,19 @@ contract Vault2 is ERC20, ReentrancyGuard {
             return 0;
         }
 
-        // swap to UBXT
+        // swap to UBXN
         uint256 fee = (amount * feeParams.pctTradUpbots) / PERCENT_MAX;
-        uint256 _before = IERC20(vaultParams.ubxtToken).balanceOf(
+        uint256 _before = IERC20(vaultParams.ubxnToken).balanceOf(
             address(this)
         );
-        _swapToUBXT(token, fee);
-        uint256 _after = IERC20(vaultParams.ubxtToken).balanceOf(address(this));
-        uint256 ubxtAmt = _after - _before;
+        _swapToUBXN(token, fee);
+        uint256 _after = IERC20(vaultParams.ubxnToken).balanceOf(address(this));
+        uint256 ubxnAmt = _after - _before;
 
         // transfer to company wallet
-        IERC20(vaultParams.ubxtToken).safeTransfer(
+        IERC20(vaultParams.ubxnToken).safeTransfer(
             feeParams.addrUpbots,
-            ubxtAmt
+            ubxnAmt
         );
 
         // return remaining token amount
@@ -540,45 +540,45 @@ contract Vault2 is ERC20, ReentrancyGuard {
             : feeParams.addrUpbots;
         uint256 companyAmount = (amount * pctCompany) / PERCENT_MAX;
 
-        // swap to UBXT
+        // swap to UBXN
         uint256 _total = stakersAmount + devAmount + burnAmount + companyAmount;
 
         uint256 _tokenBefore = IERC20(token).balanceOf(address(this));
-        uint256 _before = IERC20(vaultParams.ubxtToken).balanceOf(
+        uint256 _before = IERC20(vaultParams.ubxnToken).balanceOf(
             address(this)
         );
-        _swapToUBXT(token, _total);
-        uint256 _after = IERC20(vaultParams.ubxtToken).balanceOf(address(this));
+        _swapToUBXN(token, _total);
+        uint256 _after = IERC20(vaultParams.ubxnToken).balanceOf(address(this));
         uint256 _tokenAfter = IERC20(vaultParams.baseToken).balanceOf(
             address(this)
         );
 
-        uint256 ubxtAmt = _after - _before;
+        uint256 ubxnAmt = _after - _before;
         uint256 feeAmount = _tokenBefore - _tokenAfter;
 
-        // calculate UBXT amounts
-        stakersAmount = (ubxtAmt * stakersAmount) / _total;
-        devAmount = (ubxtAmt * devAmount) / _total;
-        companyAmount = (ubxtAmt * companyAmount) / _total;
-        burnAmount = ubxtAmt - stakersAmount - devAmount - companyAmount;
+        // calculate UBXN amounts
+        stakersAmount = (ubxnAmt * stakersAmount) / _total;
+        devAmount = (ubxnAmt * devAmount) / _total;
+        companyAmount = (ubxnAmt * companyAmount) / _total;
+        burnAmount = ubxnAmt - stakersAmount - devAmount - companyAmount;
 
         // Transfer
-        IERC20(vaultParams.ubxtToken).safeTransfer(
+        IERC20(vaultParams.ubxnToken).safeTransfer(
             BURN_ADDRESS, // burn
             burnAmount
         );
 
-        IERC20(vaultParams.ubxtToken).safeTransfer(
+        IERC20(vaultParams.ubxnToken).safeTransfer(
             feeParams.addrStakers, // stakers
             stakersAmount
         );
 
-        IERC20(vaultParams.ubxtToken).safeTransfer(
+        IERC20(vaultParams.ubxnToken).safeTransfer(
             feeParams.addrAlgoDev, // algodev
             devAmount
         );
 
-        IERC20(vaultParams.ubxtToken).safeTransfer(
+        IERC20(vaultParams.ubxnToken).safeTransfer(
             addrCompany, // company (upbots or partner)
             companyAmount
         );
@@ -615,13 +615,13 @@ contract Vault2 is ERC20, ReentrancyGuard {
         );
         assert(
             IERC20(vaultParams.quoteToken).approve(
-                vaultParams.ubxtPoolRouter,
+                vaultParams.ubxnPoolRouter,
                 MAX_APPROVAL
             )
         );
         assert(
             IERC20(vaultParams.baseToken).approve(
-                vaultParams.ubxtPoolRouter,
+                vaultParams.ubxnPoolRouter,
                 MAX_APPROVAL
             )
         );
@@ -649,33 +649,33 @@ contract Vault2 is ERC20, ReentrancyGuard {
         require(amounts[0] > 0, "invalid swap result");
     }
 
-    // _to is supposed to be UBXT
+    // _to is supposed to be UBXN
     // _from is quote token or base token (we assume quote token is USDC)
-    function _swapToUBXT(address _from, uint256 _amount) internal {
+    function _swapToUBXN(address _from, uint256 _amount) internal {
         address[] memory path;
 
-        //from token could be one of quote, base, ubxtPair token.
-        if (_from == vaultParams.ubxtPairToken) {
+        //from token could be one of quote, base, ubxnPair token.
+        if (_from == vaultParams.ubxnPairToken) {
             path = new address[](2);
             path[0] = _from;
-            path[1] = vaultParams.ubxtToken;
+            path[1] = vaultParams.ubxnToken;
         } else if (
             _from == vaultParams.quoteToken ||
-            vaultParams.ubxtPairToken == vaultParams.quoteToken
+            vaultParams.ubxnPairToken == vaultParams.quoteToken
         ) {
             path = new address[](3);
             path[0] = _from;
-            path[1] = vaultParams.ubxtPairToken;
-            path[2] = vaultParams.ubxtToken;
+            path[1] = vaultParams.ubxnPairToken;
+            path[2] = vaultParams.ubxnToken;
         } else {
             path = new address[](4);
             path[0] = _from;
             path[1] = vaultParams.quoteToken;
-            path[2] = vaultParams.ubxtPairToken;
-            path[3] = vaultParams.ubxtToken;
+            path[2] = vaultParams.ubxnPairToken;
+            path[3] = vaultParams.ubxnToken;
         }
 
-        uint256[] memory amounts = UniswapRouterV2(vaultParams.ubxtPoolRouter)
+        uint256[] memory amounts = UniswapRouterV2(vaultParams.ubxnPoolRouter)
             .swapExactTokensForTokens(
                 _amount,
                 0,
