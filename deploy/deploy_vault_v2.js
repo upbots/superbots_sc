@@ -28,7 +28,7 @@ const deployFunction = async ({
   await run("verify:verify", {
     address: contractAddress,
     constructorArguments: params,
-    contract: "contracts/vault2.sol:Vault2",
+    contract: "contracts/vault_v2.sol:Vault_V2",
   });
 };
 
