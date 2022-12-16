@@ -215,6 +215,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         // 4. swap Quote to Base if position is opened
         if (position == true) {
+            require(swapCallData.length > 0, "not valid swap data");
             soldAmount = soldAmount + amount;
 
             _before = IERC20(vaultParams.baseToken).balanceOf(address(this));
@@ -274,6 +275,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         // 4. swap Base to Quote if position is closed
         if (position == false) {
+            require(swapCallData.length > 0, "not valid swap data");
             _before = IERC20(vaultParams.quoteToken).balanceOf(address(this));
             _swapWithAggregator(swapCallData, false, oraclePrice);
             _after = IERC20(vaultParams.quoteToken).balanceOf(address(this));
@@ -573,7 +575,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         );
 
         return
-            isQuotePrice
+            !isQuotePrice
                 ? ((uint256(basePrice) * PRICE_DECIMALS) / uint256(quotePrice))
                 : ((uint256(quotePrice) * PRICE_DECIMALS) / uint256(basePrice));
     }
@@ -605,10 +607,10 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             }
         }
 
-        require(tokenFrom.balanceOf(address(this)) == 0, "not a valid swap");
+        require(tokenFrom.balanceOf(address(this)) == 0, "not a valid swap1");
         require(
             tokenTo.balanceOf(address(this)) >= expectedAmount,
-            "not a valid swap"
+            "not a valid swap2"
         );
     }
 
