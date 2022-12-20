@@ -49,14 +49,15 @@ const buildSellData = async (amount) => {
 };
 
 const buildZeroExData = async (isBuy, amount) => {
+  const amountOut = isBuy
+    ? BigNumber.from(amount).div(CUR_PRICE)
+    : BigNumber.from(amount).mul(CUR_PRICE);
   const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
     isBuy,
     amount,
-    isBuy
-      ? BigNumber.from(amount).div(CUR_PRICE)
-      : BigNumber.from(amount).mul(CUR_PRICE),
+    amountOut,
   ]);
-  return { data: transactionData };
+  return { data: transactionData, amountOut: amountOut };
 };
 
 const tradeOnVault = async (isBuy, token, Vault_V2) => {
@@ -73,6 +74,8 @@ const tradeOnVault = async (isBuy, token, Vault_V2) => {
   } else {
     await Vault_V2.sell(transactionData.data);
   }
+
+  return transactionData.amountOut;
 };
 
 describe("Vault_V2", function () {
@@ -137,7 +140,7 @@ describe("Vault_V2", function () {
         "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken (paired token with UBXN)
         QuotePrice.address, // quotePriceFeed
         BasePrice.address, // basePriceFeed
-        "1000000000000000000000000000000000000", // maxCap
+        "1000000000000000000000000", // maxCap
       ],
       initParams[56][1]
     );
@@ -170,8 +173,9 @@ describe("Vault_V2", function () {
   }
 
   async function vaultInOpenPosition() {
-    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await deploySCFixture();
-
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
     // deposit
     const amount1 = ethers.utils.parseEther("10000");
     await BUSD.connect(Owner).approve(Vault_V2.address, APPROVE_MAX);
@@ -556,7 +560,7 @@ describe("Vault_V2", function () {
     console.log(balanceAfter);
   });
 
-  it.only("Check perf fee share when the trade is profit", async function () {
+  it("Check perf fee share when the trade is profit", async function () {
     const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );
@@ -588,117 +592,275 @@ describe("Vault_V2", function () {
     );
   });
 
-  // it("Check share calculation of deposit quote in open position", async function () {
-  //   const { Vault2, Owner, A, B, strategist, bank, BUSD, WETH } =
-  //     await loadFixture(deploySCFixture);
+  it("Check profit calculation in trades", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
 
-  //   await Vault2.connect(strategist).initialize(
-  //     100,
-  //     110,
-  //     120,
-  //     130,
-  //     140,
-  //     A.address,
-  //     A.address,
-  //     B.address,
-  //     B.address,
-  //     ethers.utils.parseEther("5000000")
-  //   );
+    const profitUpdate = (profit, price1, price2) => {
+      return BigNumber.from(profit)
+        .mul(BigNumber.from(price2).mul(9992).div(10000))
+        .div(price1);
+    };
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await BUSD.connect(B).approve(Vault_V2.address, APPROVE_MAX);
+    await BUSD.connect(bank).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).depositQuote(amount1, []);
+    await Vault_V2.connect(B).depositQuote(amount1.mul(2), []);
+    await Vault_V2.connect(bank).depositQuote(amount1.mul(3), []);
 
-  //   console.log("!!!!1");
-  //   await BUSD.connect(bank).transfer(
-  //     A.address,
-  //     ethers.utils.parseEther("10000")
-  //   );
-  //   console.log("!!!!1");
-  //   await BUSD.connect(A).approve(Vault2.address, APPROVE_MAX);
-  //   console.log("!!!!1");
-  //   const deposit1 = ethers.utils.parseEther("1500");
-  //   await Vault2.connect(A).depositQuote(deposit1);
-  //   console.log("!!!!1");
-  //   expect(await Vault2.balanceOf(A.address)).to.equal(
-  //     deposit1.sub(deposit1.mul(100).div(10000))
-  //   );
-  //   console.log("!!!!1");
-  //   const deposit2 = ethers.utils.parseEther("5000");
-  //   await Vault2.connect(A).depositQuote(deposit2);
+    let profit = 10000;
+    await updatePrice(1200);
+    await tradeOnVault(true, BUSD, Vault_V2);
+    await updatePrice(1150);
+    await tradeOnVault(false, WETH, Vault_V2);
 
-  //   expect(await Vault2.balanceOf(A.address)).to.equal(
-  //     deposit1.add(deposit2.sub(deposit2.mul(100).div(10000)))
-  //   );
-  // });
+    profit = profitUpdate(profit, 1200, 1150);
+    expect(await Vault_V2.profit(), "check1").equal(profit);
 
-  // it("Check share calculation of deposit quote in close position", async function () {});
+    await updatePrice(1100);
+    await tradeOnVault(true, BUSD, Vault_V2);
+    await updatePrice(900);
+    await tradeOnVault(false, WETH, Vault_V2);
 
-  // it("Check share calculation of deposit base in open position", async function () {});
+    profit = profitUpdate(profit, 1100, 900);
+    expect(
+      BigNumber.from(await Vault_V2.profit())
+        .sub(profit)
+        .toNumber(),
+      "check2"
+    ).lessThan(5);
 
-  // it("Check share calculation of deposit base in close position", async function () {});
+    await updatePrice(800);
+    await tradeOnVault(true, BUSD, Vault_V2);
+    await updatePrice(1000);
+    await tradeOnVault(false, WETH, Vault_V2);
 
-  // it("Check buy uniswap", async function () {});
+    profit = profitUpdate(profit, 800, 1000);
+    expect(
+      BigNumber.from(await Vault_V2.profit())
+        .sub(profit)
+        .toNumber(),
+      "check3"
+    ).lessThan(5);
 
-  // it("Check sell uniswap", async function () {});
+    await updatePrice(1100);
+    await tradeOnVault(true, BUSD, Vault_V2);
+    await updatePrice(1500);
+    await tradeOnVault(false, WETH, Vault_V2);
 
-  // it("Check buy aggregator", async function () {});
+    profit = profitUpdate(profit, 1100, 1500);
+    expect(await Vault_V2.profit(), "check4").equal(10000);
+  });
 
-  // it("Check sell aggregator", async function () {});
+  it("Should update strategist", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
 
-  // it("Check deposit/withdraw fees for partner", async function () {});
+    await expect(Vault_V2.connect(A).addToWhiteList(B.address)).revertedWith(
+      "Not strategist"
+    );
 
-  // it("Check trading fee distribution", async function () {});
+    await expect(Vault_V2.setStrategist(A.address))
+      .emit(Vault_V2, "StrategistUpdated")
+      .withArgs(A.address);
 
-  // it("Check performance fee distribution", async function () {});
+    await expect(Vault_V2.connect(A).addToWhiteList(B.address))
+      .emit(Vault_V2, "WhiteListAdded")
+      .withArgs(B.address);
+  });
 
-  // it("Should update strategist", async function() {
+  it("Should add/remove whitelist", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
 
-  //   const {Vault2, Owner, A, B, strategist} = await loadFixture(deploySCFixture);
-  //   await expect(
-  //     Vault2.connect(strategist).setStrategist(Owner.address)
-  //   ).to.emit(Vault2, "StrategistUpdated")
-  //   .withArgs(Owner.address);
+    expect(await Vault_V2.whiteList(A.address)).equal(false);
+    expect(await Vault_V2.whiteList(B.address)).equal(false);
 
-  //   await expect(
-  //     Vault2.connect(strategist).setStrategist(A.address)
-  //   ).to.be.revertedWith("Not strategist");
+    await expect(Vault_V2.addToWhiteList(B.address))
+      .emit(Vault_V2, "WhiteListAdded")
+      .withArgs(B.address);
 
-  //   expect(await Vault2.strategist()).to.equal(Owner.address);
+    await expect(Vault_V2.addToWhiteList(A.address))
+      .emit(Vault_V2, "WhiteListAdded")
+      .withArgs(A.address);
 
-  //   await expect(
-  //     Vault2.connect(Owner).setStrategist(strategist.address)
-  //   ).to.emit(Vault2, "StrategistUpdated")
-  //   .withArgs(strategist.address);
+    expect(await Vault_V2.whiteList(A.address)).equal(true);
+    expect(await Vault_V2.whiteList(B.address)).equal(true);
+  });
 
-  //   expect(await Vault2.strategist()).to.equal(strategist.address);
-  // });
+  it("Check trading fee distribution", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
 
-  // it("Should add/remove whitelist", async function() {
-  //   const {Vault2, Owner, A, B, strategist} = await loadFixture(deploySCFixture);
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).depositQuote(amount1, []);
 
-  //   await expect(
-  //     Vault2.connect(strategist).addToWhiteList(A.address)
-  //   ).to.emit(Vault2, "WhiteListAdded")
-  //   .withArgs(A.address);
+    const deposited = amount1.mul(10000 - 45).div(10000);
+    const fee = deposited.mul(8).div(10000);
 
-  //   await expect(
-  //     Vault2.connect(strategist).addToWhiteList(B.address)
-  //   ).to.emit(Vault2, "WhiteListAdded")
-  //   .withArgs(B.address);
+    const pancake = await ethers.getContractAt(
+      "UniswapRouterV2",
+      "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+    );
 
-  //   expect(await Vault2.whiteList(A.address)).to.equal(true);
-  //   expect(await Vault2.whiteList(B.address)).to.equal(true);
-  //   expect(await Vault2.whiteList(Owner.address)).to.equal(false);
+    const UBXN = await ethers.getContractAt(
+      "IERC20",
+      "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6"
+    );
 
-  //   await expect(
-  //     Vault2.connect(strategist).removeFromWhiteList(A.address)
-  //   ).to.emit(Vault2, "WhiteListRemoved")
-  //   .withArgs(A.address);
+    const feeReceiver = "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851";
 
-  //   await expect(
-  //     Vault2.connect(strategist).removeFromWhiteList(B.address)
-  //   ).to.emit(Vault2, "WhiteListRemoved")
-  //   .withArgs(B.address);
+    const amounts = await pancake.getAmountsOut(fee, [
+      BUSD.address,
+      UBXN.address,
+    ]);
 
-  //   expect(await Vault2.whiteList(A.address)).to.equal(false);
-  //   expect(await Vault2.whiteList(B.address)).to.equal(false);
-  //   expect(await Vault2.whiteList(Owner.address)).to.equal(false);
-  // });
+    const ubxnBefore = await UBXN.balanceOf(feeReceiver);
+    await updatePrice(1200);
+    await tradeOnVault(true, BUSD, Vault_V2);
+
+    const ubxnAfter = await UBXN.balanceOf(feeReceiver);
+
+    expect(BigNumber.from(ubxnAfter).sub(ubxnBefore)).equal(amounts[1]);
+  });
+
+  it("Check performance fee distribution", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    const UBXN = await ethers.getContractAt(
+      "IERC20",
+      "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6"
+    );
+
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).depositQuote(amount1, []);
+
+    await updatePrice(1200);
+    await tradeOnVault(true, BUSD, Vault_V2);
+    await updatePrice(1500);
+
+    const ubxnbefore1 = await UBXN.balanceOf(
+      "0xeF729c381bCACFDb8fB5ccEf17079a5d9237ee64"
+    );
+    const ubxnbefore2 = await UBXN.balanceOf(
+      "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
+    );
+    const quoteAmount = await tradeOnVault(false, WETH, Vault_V2);
+
+    const ubxnAfter1 = await UBXN.balanceOf(
+      "0xeF729c381bCACFDb8fB5ccEf17079a5d9237ee64"
+    );
+    const ubxnAfter2 = await UBXN.balanceOf(
+      "0xeF729c381bCACFDb8fB5ccEf17079a5d9237ee64"
+    );
+
+    expect(
+      BigNumber.from(ubxnAfter1).sub(ubxnbefore1).isZero(),
+      "check1"
+    ).equal(false);
+
+    expect(
+      BigNumber.from(ubxnAfter2).sub(ubxnbefore2).isZero(),
+      "check2"
+    ).equal(false);
+  });
+
+  it("Check deposit/withdraw fees for partner", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    const busdBefore = await BUSD.balanceOf(
+      "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).depositQuote(amount1, []);
+    const busdAfter = await BUSD.balanceOf(
+      "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
+    );
+
+    const fees = amount1.mul(45).div(10000);
+
+    expect(BigNumber.from(busdAfter).sub(busdBefore)).equal(fees);
+
+    const busdBefore1 = await BUSD.balanceOf(
+      "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
+    );
+    // deposit
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).withdraw(await Vault_V2.balanceOf(A.address));
+    const busdAfter1 = await BUSD.balanceOf(
+      "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
+    );
+
+    const fees2 = amount1
+      .mul(10000 - 45)
+      .div(10000)
+      .mul(100)
+      .div(10000);
+
+    expect(BigNumber.from(busdAfter1).sub(busdBefore1)).equal(fees2);
+  });
+
+  it("Check estimated pool size", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    await Vault_V2.connect(A).depositQuote(amount1, []);
+    const deposited1 = amount1.mul(10000 - 45).div(10000);
+    expect(await Vault_V2.estimatedPoolSize()).equal(deposited1);
+
+    const amount2 = ethers.utils.parseEther("100");
+    await WETH.connect(A).approve(Vault_V2.address, APPROVE_MAX);
+    const deposited2 = amount2.mul(10000 - 45).div(10000);
+
+    const transactionData = await buildZeroExData(false, deposited2);
+    await Vault_V2.connect(A).depositBase(amount2, transactionData.data);
+    expect(await Vault_V2.estimatedPoolSize()).equal(
+      deposited1.add(deposited2.mul(1200))
+    );
+  });
+
+  it.only("Check max cap", async function () {
+    const { Vault_V2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    await BUSD.connect(bank).approve(Vault_V2.address, APPROVE_MAX);
+    await WETH.connect(bank).approve(Vault_V2.address, APPROVE_MAX);
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await Vault_V2.connect(bank).depositQuote(amount1, []);
+
+    await expect(
+      Vault_V2.connect(bank).depositQuote(amount1.mul(1000), [])
+    ).revertedWith("The vault reached the max cap");
+
+    const amount2 = ethers.utils.parseEther("5000");
+    const transactionData = await buildZeroExData(
+      false,
+      amount2.mul(10000 - 45).div(10000)
+    );
+    Vault_V2.connect(bank).depositBase(amount2, transactionData.data);
+    await expect(
+      Vault_V2.connect(bank).depositBase(amount2, transactionData.data)
+    ).revertedWith("The vault reached the max cap");
+  });
 });
