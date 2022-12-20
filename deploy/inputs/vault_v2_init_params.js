@@ -9,7 +9,7 @@ const initParams = {
       "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken (paired token with UBXN)
       "0xcBb98864Ef56E9042e7d2efef76141f15731B82f", // quotePriceFeed
       "0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e", // basePriceFeed
-      "1000000000000000000000000000000000000", // maxCap
+      "1000000000000000000000000", // maxCap 1M
     ],
     [
       45, // pctDeposit

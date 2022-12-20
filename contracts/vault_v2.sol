@@ -184,7 +184,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         require(initialized, "not initialized");
 
         // 1. Check max cap
-        uint256 oraclePrice = getDerivedPrice(true);
+        uint256 oraclePrice = getDerivedPrice(false);
         uint256 _poolSize = (IERC20(vaultParams.baseToken).balanceOf(
             address(this)
         ) * oraclePrice) /
@@ -219,7 +219,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             soldAmount = soldAmount + amount;
 
             _before = IERC20(vaultParams.baseToken).balanceOf(address(this));
-            _swapWithAggregator(swapCallData, true, oraclePrice);
+            _swapWithAggregator(swapCallData, true, getDerivedPrice(true));
             _after = IERC20(vaultParams.baseToken).balanceOf(address(this));
             amount = _after - _before;
 
@@ -661,5 +661,12 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             return _price / int256(10**uint256(_priceDecimals - _decimals));
         }
         return _price;
+    }
+
+    function estimatedPoolSize() external view returns (uint256) {
+        return
+            IERC20(vaultParams.quoteToken).balanceOf(address(this)) +
+            ((IERC20(vaultParams.baseToken).balanceOf(address(this)) *
+                getDerivedPrice(false)) / PRICE_DECIMALS);
     }
 }

@@ -6,8 +6,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./vault_v2.sol";
 
 contract VaultFactory_V2 is Ownable {
-    address public addrGenerator;
-
     address public immutable aggregatorAddr;
     address public immutable ubxnSwapRouter;
     address public immutable ubxnToken;
@@ -16,7 +14,6 @@ contract VaultFactory_V2 is Ownable {
     address public immutable basePriceFeed;
 
     event VaultGenerated(address);
-    event GeneratorAddressUpdated(address);
 
     constructor(
         address _aggregatorAddr,
@@ -38,13 +35,6 @@ contract VaultFactory_V2 is Ownable {
         ubxnPairToken = _ubxnPairToken;
         quotePriceFeed = _quotePriceFeed;
         basePriceFeed = _basePriceFeed;
-        addrGenerator = msg.sender;
-    }
-
-    function setGeneratorAddress(address _generator) external onlyOwner {
-        require(_generator != address(0));
-        addrGenerator = _generator;
-        emit GeneratorAddressUpdated(_generator);
     }
 
     function generateVault(
@@ -54,9 +44,7 @@ contract VaultFactory_V2 is Ownable {
         address _strategist,
         uint256 _maxCap,
         FeeParams calldata _feeParams
-    ) external {
-        require(msg.sender == addrGenerator, "Not generator");
-
+    ) external onlyOwner returns (address) {
         require(_quoteToken != address(0));
         require(_baseToken != address(0));
         require(_strategist != address(0));
@@ -79,5 +67,6 @@ contract VaultFactory_V2 is Ownable {
 
         // emit event
         emit VaultGenerated(address(newVault));
+        return address(newVault);
     }
 }
