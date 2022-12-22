@@ -12,6 +12,7 @@ contract VaultFactory_V2 is Ownable {
     address public immutable ubxnPairToken;
     address public immutable quotePriceFeed;
     address public immutable basePriceFeed;
+    address public immutable uniswapRouter;
 
     event VaultGenerated(address);
 
@@ -21,7 +22,8 @@ contract VaultFactory_V2 is Ownable {
         address _ubxnToken,
         address _ubxnPairToken,
         address _quotePriceFeed,
-        address _basePriceFeed
+        address _basePriceFeed,
+        address _uniswapRouter
     ) {
         require(_aggregatorAddr != address(0), "invalid aggregator");
         require(_ubxnSwapRouter != address(0), "invalid router");
@@ -29,12 +31,14 @@ contract VaultFactory_V2 is Ownable {
         require(_ubxnPairToken != address(0), "invalid pair");
         require(_quotePriceFeed != address(0), "invalid price feed");
         require(_basePriceFeed != address(0), "invalid price feed");
+        require(_uniswapRouter != address(0), "invalid uni router");
         aggregatorAddr = _aggregatorAddr;
         ubxnSwapRouter = _ubxnSwapRouter;
         ubxnToken = _ubxnToken;
         ubxnPairToken = _ubxnPairToken;
         quotePriceFeed = _quotePriceFeed;
         basePriceFeed = _basePriceFeed;
+        uniswapRouter = _uniswapRouter;
     }
 
     function generateVault(
@@ -43,11 +47,15 @@ contract VaultFactory_V2 is Ownable {
         address _baseToken,
         address _strategist,
         uint256 _maxCap,
+        address[] calldata _uniswapPath,
         FeeParams calldata _feeParams
     ) external onlyOwner returns (address) {
         require(_quoteToken != address(0));
         require(_baseToken != address(0));
         require(_strategist != address(0));
+        require(_uniswapPath.length > 1);
+        require(_uniswapPath[0] == _quoteToken);
+        require(_uniswapPath[_uniswapPath.length - 1] == _baseToken);
 
         // deploy a new vault
         Vault_V2 newVault = new Vault_V2(_name, address(this));
@@ -55,6 +63,8 @@ contract VaultFactory_V2 is Ownable {
             _quoteToken,
             _baseToken,
             aggregatorAddr,
+            uniswapRouter,
+            _uniswapPath,
             ubxnSwapRouter,
             ubxnToken,
             ubxnPairToken,
