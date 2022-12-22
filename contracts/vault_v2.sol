@@ -15,6 +15,8 @@ struct VaultParams {
     address quoteToken;
     address baseToken;
     address aggregatorAddr;
+    address uniswapRouter;
+    address[] uniswapPath;
     address ubxnSwapRouter;
     address ubxnToken;
     address ubxnPairToken;
@@ -54,6 +56,8 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
     mapping(address => bool) public whiteList;
 
+    address[] uniswapBackPath;
+
     bool public position = false; // false: closed, true: opened
     uint256 public soldAmount = 0;
     uint256 public profit = PERCENT_MAX;
@@ -63,6 +67,8 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     uint256 private constant MAX_APPROVAL = type(uint256).max;
     uint16 public constant PERCENT_MAX = 10000;
     uint256 private constant PRICE_DECIMALS = (10**18);
+    uint16 public constant SLIPPAGE = 9850;
+    uint16 public constant SLIPPAGE_SELL = 9500;
 
     event Received(address, uint256);
     event Initialized(VaultParams, FeeParams);
@@ -103,6 +109,17 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         require(_vaultParams.ubxnPairToken != address(0));
         require(_vaultParams.quotePriceFeed != address(0));
         require(_vaultParams.basePriceFeed != address(0));
+        require(_vaultParams.maxCap > 0);
+        require(_vaultParams.uniswapPath.length > 1);
+        for (uint256 i = _vaultParams.uniswapPath.length - 1; i >= 0; i--) {
+            require(_vaultParams.uniswapPath[i] != address(0));
+            uniswapBackPath.push(_vaultParams.uniswapPath[i]);
+        }
+        require(_vaultParams.uniswapPath[0] == _vaultParams.quoteToken);
+        require(
+            _vaultParams.uniswapPath[_vaultParams.uniswapPath.length - 1] ==
+                _vaultParams.baseToken
+        );
 
         require(_feeParams.pctDeposit < PERCENT_MAX, "invalid deposit fee");
         require(_feeParams.pctWithdraw < PERCENT_MAX, "invalid withdraw fee");
@@ -177,10 +194,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         emit WhiteListRemoved(_address);
     }
 
-    function depositQuote(uint256 amount, bytes calldata swapCallData)
-        external
-        nonReentrant
-    {
+    function depositQuote(uint256 amount) external nonReentrant {
         require(initialized, "not initialized");
 
         // 1. Check max cap
@@ -215,11 +229,10 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         // 4. swap Quote to Base if position is opened
         if (position == true) {
-            require(swapCallData.length > 0, "not valid swap data");
             soldAmount = soldAmount + amount;
 
             _before = IERC20(vaultParams.baseToken).balanceOf(address(this));
-            _swapWithAggregator(swapCallData, true, getDerivedPrice(true));
+            _swapWithUni(true, amount, getDerivedPrice(true));
             _after = IERC20(vaultParams.baseToken).balanceOf(address(this));
             amount = _after - _before;
 
@@ -277,7 +290,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         if (position == false) {
             require(swapCallData.length > 0, "not valid swap data");
             _before = IERC20(vaultParams.quoteToken).balanceOf(address(this));
-            _swapWithAggregator(swapCallData, false, oraclePrice);
+            _swapWithUni(false, amount, oraclePrice);
             _after = IERC20(vaultParams.quoteToken).balanceOf(address(this));
             amount = _after - _before;
 
@@ -358,6 +371,70 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
                     withdrawAmount
                 );
             }
+        }
+
+        // burn these shares from the sender wallet
+        _burn(msg.sender, shares);
+    }
+
+    function withdrawQuote(uint256 shares) external nonReentrant {
+        require(initialized, "not initialized");
+        require(shares <= balanceOf(msg.sender), "Invalid share amount");
+
+        uint256 withdrawAmount;
+
+        if (position == false) {
+            withdrawAmount =
+                (IERC20(vaultParams.quoteToken).balanceOf(address(this)) *
+                    shares) /
+                totalSupply();
+        }
+
+        if (position == true) {
+            withdrawAmount =
+                (IERC20(vaultParams.baseToken).balanceOf(address(this)) *
+                    shares) /
+                totalSupply();
+            uint256 oraclePrice = getDerivedPrice(false);
+            uint256 amountInQuote = (oraclePrice * withdrawAmount) /
+                PRICE_DECIMALS;
+
+            uint256 thisSoldAmount = (soldAmount * shares) / totalSupply();
+            uint256 _profit = (profit * amountInQuote) / thisSoldAmount;
+            if (_profit > PERCENT_MAX) {
+                uint256 profitAmount = (withdrawAmount *
+                    (_profit - PERCENT_MAX)) / _profit;
+                uint256 feeAmount = takePerfFees(
+                    vaultParams.baseToken,
+                    profitAmount
+                );
+                withdrawAmount = withdrawAmount - feeAmount;
+            }
+            soldAmount = soldAmount - thisSoldAmount;
+
+            if (withdrawAmount > 0) {
+                uint256 _before = IERC20(vaultParams.quoteToken).balanceOf(
+                    address(this)
+                );
+                _swapWithUni(false, withdrawAmount, oraclePrice);
+                uint256 _after = IERC20(vaultParams.quoteToken).balanceOf(
+                    address(this)
+                );
+                withdrawAmount = _after - _before;
+            }
+        }
+
+        if (withdrawAmount > 0) {
+            // pay withdraw fees
+            withdrawAmount = takePartnerFees(
+                vaultParams.quoteToken,
+                withdrawAmount,
+                false
+            );
+            IERC20(vaultParams.quoteToken).safeTransfer(
+                msg.sender,
+                withdrawAmount
+            );
         }
 
         // burn these shares from the sender wallet
@@ -594,8 +671,9 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             : IERC20(vaultParams.quoteToken);
 
         uint256 expectedAmount = (((oraclePrice *
-            tokenFrom.balanceOf(address(this))) / PRICE_DECIMALS) * 90) /
-            100 +
+            tokenFrom.balanceOf(address(this))) / PRICE_DECIMALS) *
+            (isBuy ? SLIPPAGE : SLIPPAGE_SELL)) /
+            PERCENT_MAX +
             tokenTo.balanceOf(address(this));
 
         (bool success, ) = vaultParams.aggregatorAddr.call(swapCallData);
@@ -612,6 +690,35 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             tokenTo.balanceOf(address(this)) >= expectedAmount,
             "not a valid swap2"
         );
+    }
+
+    function _swapWithUni(
+        bool isBuy,
+        uint256 amount,
+        uint256 oraclePrice
+    ) internal {
+        IERC20 tokenFrom = isBuy
+            ? IERC20(vaultParams.quoteToken)
+            : IERC20(vaultParams.baseToken);
+        IERC20 tokenTo = isBuy
+            ? IERC20(vaultParams.baseToken)
+            : IERC20(vaultParams.quoteToken);
+
+        uint256 expectedAmount = (((oraclePrice *
+            tokenFrom.balanceOf(address(this))) / PRICE_DECIMALS) * SLIPPAGE) /
+            PERCENT_MAX +
+            tokenTo.balanceOf(address(this));
+
+        uint256[] memory amounts = UniswapRouterV2(vaultParams.uniswapRouter)
+            .swapExactTokensForTokens(
+                amount,
+                expectedAmount,
+                isBuy ? vaultParams.uniswapPath : uniswapBackPath,
+                address(this),
+                block.timestamp + 60
+            );
+
+        require(amounts[0] > 0, "invalid return amount");
     }
 
     function _swapToUBXN(address _from, uint256 _amount) internal {
@@ -663,10 +770,14 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         return _price;
     }
 
-    function estimatedPoolSize() external view returns (uint256) {
+    function estimatedPoolSize() public view returns (uint256) {
         return
             IERC20(vaultParams.quoteToken).balanceOf(address(this)) +
             ((IERC20(vaultParams.baseToken).balanceOf(address(this)) *
                 getDerivedPrice(false)) / PRICE_DECIMALS);
+    }
+
+    function estimatedDeposit() external view returns (uint256) {
+        return (estimatedPoolSize() * balanceOf(msg.sender)) / totalSupply();
     }
 }
