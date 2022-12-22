@@ -36,4 +36,4 @@ module.exports = deployFunction;
 module.exports.tags = [contractName];
 
 // ***** Deploying *****
-// npx hardhat deploy --network mainnet --tags Vault2
+// npx hardhat deploy --network mainnet --tags VaultFactory_V2
