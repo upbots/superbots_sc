@@ -4,7 +4,6 @@ pragma solidity 0.8.13;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract ZeroEx {
-    int256 public answer = 0;
     address public immutable bank;
     address public immutable quoteToken;
     address public immutable baseToken;

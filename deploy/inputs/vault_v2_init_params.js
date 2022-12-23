@@ -4,7 +4,11 @@ const initParams = {
       "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // quote token
       "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", // base token
       "0xDef1C0ded9bec7F1a1670819833240f027b25EfF", // aggregatorAddr
-      "0x10ED43C718714eb63d5aA57B78B54704E256024E", // ubxnSwapRouter
+      "0x10ED43C718714eb63d5aA57B78B54704E256024E", // uniswapRouter
+      [
+        "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+        "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+      ], // uniswap path
       "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6", // ubxnToken
       "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken (paired token with UBXN)
       "0xcBb98864Ef56E9042e7d2efef76141f15731B82f", // quotePriceFeed

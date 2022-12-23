@@ -17,7 +17,6 @@ struct VaultParams {
     address aggregatorAddr;
     address uniswapRouter;
     address[] uniswapPath;
-    address ubxnSwapRouter;
     address ubxnToken;
     address ubxnPairToken;
     address quotePriceFeed;
@@ -42,13 +41,12 @@ struct FeeParams {
     address addrPartner;
 }
 
-contract Vault_V2 is ERC20, ReentrancyGuard {
+contract VaultV2 is ERC20, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
     string public vaultName;
     address public strategist;
-    address public immutable addrFactory;
 
     VaultParams public vaultParams;
     FeeParams public feeParams;
@@ -56,7 +54,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
     mapping(address => bool) public whiteList;
 
-    address[] uniswapBackPath;
+    address[] public uniswapBackPath;
 
     bool public position = false; // false: closed, true: opened
     uint256 public soldAmount = 0;
@@ -70,16 +68,11 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     uint16 public constant SLIPPAGE = 9850;
     uint16 public constant SLIPPAGE_SELL = 9500;
 
-    event Received(address, uint256);
     event Initialized(VaultParams, FeeParams);
     event WhiteListAdded(address);
     event WhiteListRemoved(address);
     event TradeDone(bool, uint256, uint256);
     event StrategistUpdated(address);
-
-    receive() external payable {
-        emit Received(msg.sender, msg.value);
-    }
 
     constructor(string memory _name, address _strategist)
         ERC20(
@@ -91,50 +84,45 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         vaultName = _name;
         strategist = _strategist;
-        addrFactory = msg.sender;
     }
 
     function initialize(
         VaultParams calldata _vaultParams,
         FeeParams calldata _feeParams
     ) external {
-        require(msg.sender == strategist, "Not strategist");
+        require(msg.sender == strategist, "NS");
         require(!initialized, "already initialized");
 
         require(_vaultParams.quoteToken != address(0));
         require(_vaultParams.baseToken != address(0));
         require(_vaultParams.aggregatorAddr != address(0));
-        require(_vaultParams.ubxnSwapRouter != address(0));
         require(_vaultParams.ubxnToken != address(0));
         require(_vaultParams.ubxnPairToken != address(0));
         require(_vaultParams.quotePriceFeed != address(0));
         require(_vaultParams.basePriceFeed != address(0));
         require(_vaultParams.maxCap > 0);
         require(_vaultParams.uniswapPath.length > 1);
-        for (uint256 i = _vaultParams.uniswapPath.length - 1; i >= 0; i--) {
-            require(_vaultParams.uniswapPath[i] != address(0));
-            uniswapBackPath.push(_vaultParams.uniswapPath[i]);
-        }
         require(_vaultParams.uniswapPath[0] == _vaultParams.quoteToken);
         require(
             _vaultParams.uniswapPath[_vaultParams.uniswapPath.length - 1] ==
                 _vaultParams.baseToken
         );
+        for (uint256 i = 0; i < _vaultParams.uniswapPath.length; i++) {
+            uniswapBackPath.push(
+                _vaultParams.uniswapPath[
+                    _vaultParams.uniswapPath.length - 1 - i
+                ]
+            );
+        }
 
-        require(_feeParams.pctDeposit < PERCENT_MAX, "invalid deposit fee");
-        require(_feeParams.pctWithdraw < PERCENT_MAX, "invalid withdraw fee");
-        require(_feeParams.pctTradUpbots < PERCENT_MAX, "invalid trade fee");
-        require(
-            _feeParams.pctPerfAlgoDev < PERCENT_MAX,
-            "invalid algo dev fee"
-        );
-        require(
-            _feeParams.pctPerfPartners < PERCENT_MAX,
-            "invalid partner fee"
-        );
-        require(_feeParams.pctPerfStakers < PERCENT_MAX, "invalid stakers fee");
-        require(_feeParams.pctPerfBurning < PERCENT_MAX, "invalid burn fee");
-        require(_feeParams.pctPerfUpbots < PERCENT_MAX, "invalid upbots fee");
+        require(_feeParams.pctDeposit < PERCENT_MAX);
+        require(_feeParams.pctWithdraw < PERCENT_MAX);
+        require(_feeParams.pctTradUpbots < PERCENT_MAX);
+        require(_feeParams.pctPerfAlgoDev < PERCENT_MAX);
+        require(_feeParams.pctPerfPartners < PERCENT_MAX);
+        require(_feeParams.pctPerfStakers < PERCENT_MAX);
+        require(_feeParams.pctPerfBurning < PERCENT_MAX);
+        require(_feeParams.pctPerfUpbots < PERCENT_MAX);
 
         require(_feeParams.addrStakers != address(0));
         require(_feeParams.addrAlgoDev != address(0));
@@ -143,29 +131,24 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         vaultParams = _vaultParams;
         feeParams = _feeParams;
 
-        require(
-            IERC20(vaultParams.quoteToken).approve(
-                vaultParams.aggregatorAddr,
-                MAX_APPROVAL
-            )
+        IERC20(vaultParams.quoteToken).safeApprove(
+            vaultParams.aggregatorAddr,
+            MAX_APPROVAL
         );
-        require(
-            IERC20(vaultParams.baseToken).approve(
-                vaultParams.aggregatorAddr,
-                MAX_APPROVAL
-            )
+
+        IERC20(vaultParams.baseToken).safeApprove(
+            vaultParams.aggregatorAddr,
+            MAX_APPROVAL
         );
-        require(
-            IERC20(vaultParams.quoteToken).approve(
-                vaultParams.ubxnSwapRouter,
-                MAX_APPROVAL
-            )
+
+        IERC20(vaultParams.quoteToken).safeApprove(
+            vaultParams.uniswapRouter,
+            MAX_APPROVAL
         );
-        require(
-            IERC20(vaultParams.baseToken).approve(
-                vaultParams.ubxnSwapRouter,
-                MAX_APPROVAL
-            )
+
+        IERC20(vaultParams.baseToken).safeApprove(
+            vaultParams.uniswapRouter,
+            MAX_APPROVAL
         );
 
         initialized = true;
@@ -174,30 +157,30 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     }
 
     function setStrategist(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0), "invalid address");
+        require(msg.sender == strategist, "NS");
+        require(_address != address(0), "IA");
         strategist = _address;
         emit StrategistUpdated(_address);
     }
 
     function addToWhiteList(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0), "invalid address");
+        require(msg.sender == strategist, "NS");
+        require(_address != address(0), "IA");
         whiteList[_address] = true;
         emit WhiteListAdded(_address);
     }
 
     function removeFromWhiteList(address _address) external {
-        require(msg.sender == strategist, "Not strategist");
-        require(_address != address(0), "invalid address");
+        require(msg.sender == strategist, "NS");
+        require(_address != address(0), "IA");
         whiteList[_address] = false;
         emit WhiteListRemoved(_address);
     }
 
     function depositQuote(uint256 amount) external nonReentrant {
-        require(initialized, "not initialized");
+        require(initialized, "NI");
 
-        // 1. Check max cap
+        // Check max cap
         uint256 oraclePrice = getDerivedPrice(false);
         uint256 _poolSize = (IERC20(vaultParams.baseToken).balanceOf(
             address(this)
@@ -206,10 +189,10 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             IERC20(vaultParams.quoteToken).balanceOf(address(this)); // get approximate pool size to compare with max cap
         require(
             vaultParams.maxCap == 0 || _poolSize + amount < vaultParams.maxCap,
-            "The vault reached the max cap"
+            "MC"
         );
 
-        // 2. transfer quote from sender to this vault
+        // transfer quote from sender to this vault
         uint256 _before = IERC20(vaultParams.quoteToken).balanceOf(
             address(this)
         );
@@ -224,10 +207,10 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         amount = _after - _before; // Additional check for deflationary tokens
         _poolSize = _before;
 
-        // 3. pay deposit fees
+        // pay deposit fees
         amount = takePartnerFees(vaultParams.quoteToken, amount, true);
 
-        // 4. swap Quote to Base if position is opened
+        // swap Quote to Base if position is opened
         if (position == true) {
             soldAmount = soldAmount + amount;
 
@@ -239,22 +222,19 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             _poolSize = _before;
         }
 
-        // 5. calculate share and send back xUBXN
+        // calculate share and send back xUBXN
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = amount;
         } else {
             shares = (amount * totalSupply()) / _poolSize;
         }
-        require(shares > 0, "failure in share calculation");
+        require(shares > 0, "SC");
         _mint(msg.sender, shares);
     }
 
-    function depositBase(uint256 amount, bytes calldata swapCallData)
-        external
-        nonReentrant
-    {
-        require(initialized, "not initialized");
+    function depositBase(uint256 amount) external nonReentrant {
+        require(initialized, "NI");
 
         // . Check max cap
         uint256 oraclePrice = getDerivedPrice(false);
@@ -267,7 +247,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             vaultParams.maxCap == 0 ||
                 _poolSize + (oraclePrice * amount) / PRICE_DECIMALS <
                 vaultParams.maxCap,
-            "The vault reached the max cap"
+            "MC"
         );
 
         // . transfer base from sender to this vault
@@ -288,7 +268,6 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         // 4. swap Base to Quote if position is closed
         if (position == false) {
-            require(swapCallData.length > 0, "not valid swap data");
             _before = IERC20(vaultParams.quoteToken).balanceOf(address(this));
             _swapWithUni(false, amount, oraclePrice);
             _after = IERC20(vaultParams.quoteToken).balanceOf(address(this));
@@ -309,13 +288,13 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
         } else {
             shares = (amount * totalSupply()) / _poolSize;
         }
-        require(shares > 0, "failure in share calculation");
+        require(shares > 0, "SC");
         _mint(msg.sender, shares);
     }
 
     function withdraw(uint256 shares) external nonReentrant {
-        require(initialized, "not initialized");
-        require(shares <= balanceOf(msg.sender), "Invalid share amount");
+        require(initialized, "NI");
+        require(shares <= balanceOf(msg.sender), "IA2");
 
         uint256 withdrawAmount;
 
@@ -378,8 +357,8 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     }
 
     function withdrawQuote(uint256 shares) external nonReentrant {
-        require(initialized, "not initialized");
-        require(shares <= balanceOf(msg.sender), "Invalid share amount");
+        require(initialized, "NI");
+        require(shares <= balanceOf(msg.sender), "IA2");
 
         uint256 withdrawAmount;
 
@@ -442,15 +421,15 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     }
 
     function buy(bytes calldata swapCallData) external nonReentrant {
-        require(initialized, "not initialized");
-        require(whiteList[msg.sender], "Not whitelisted");
-        require(position == false, "Not valid position");
+        require(initialized, "NI");
+        require(whiteList[msg.sender], "NW");
+        require(position == false, "PO");
 
         // 1. get the amount of quoteToken to trade
         uint256 amount = IERC20(vaultParams.quoteToken).balanceOf(
             address(this)
         );
-        require(amount > 0, "No enough quoteAmount");
+        require(amount > 0, "IA3");
 
         // 2. takeTradingFees
         amount = takeTradingFees(vaultParams.quoteToken, amount);
@@ -473,15 +452,15 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
     }
 
     function sell(bytes calldata swapCallData) external nonReentrant {
-        require(initialized, "not initialized");
-        require(whiteList[msg.sender], "Not whitelisted");
-        require(position == true, "Not valid position");
+        require(initialized, "NI");
+        require(whiteList[msg.sender], "NW");
+        require(position == true, "PO");
 
         // 1. get the amount of baseToken to trade
         uint256 baseAmount = IERC20(vaultParams.baseToken).balanceOf(
             address(this)
         );
-        require(baseAmount > 0, "No enough baseAmount");
+        require(baseAmount > 0, "IA3");
 
         // 2. calc base fee amount
         baseAmount = takeTradingFees(vaultParams.baseToken, baseAmount);
@@ -685,11 +664,8 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             }
         }
 
-        require(tokenFrom.balanceOf(address(this)) == 0, "not a valid swap1");
-        require(
-            tokenTo.balanceOf(address(this)) >= expectedAmount,
-            "not a valid swap2"
-        );
+        require(tokenFrom.balanceOf(address(this)) == 0, "IS");
+        require(tokenTo.balanceOf(address(this)) >= expectedAmount, "IS2");
     }
 
     function _swapWithUni(
@@ -706,8 +682,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
 
         uint256 expectedAmount = (((oraclePrice *
             tokenFrom.balanceOf(address(this))) / PRICE_DECIMALS) * SLIPPAGE) /
-            PERCENT_MAX +
-            tokenTo.balanceOf(address(this));
+            PERCENT_MAX;
 
         uint256[] memory amounts = UniswapRouterV2(vaultParams.uniswapRouter)
             .swapExactTokensForTokens(
@@ -718,7 +693,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
                 block.timestamp + 60
             );
 
-        require(amounts[0] > 0, "invalid return amount");
+        require(amounts[0] > 0, "IA4");
     }
 
     function _swapToUBXN(address _from, uint256 _amount) internal {
@@ -745,7 +720,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
             path[3] = vaultParams.ubxnToken;
         }
 
-        uint256[] memory amounts = UniswapRouterV2(vaultParams.ubxnSwapRouter)
+        uint256[] memory amounts = UniswapRouterV2(vaultParams.uniswapRouter)
             .swapExactTokensForTokens(
                 _amount,
                 0,
@@ -754,7 +729,7 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
                 block.timestamp + 60
             );
 
-        require(amounts[0] > 0, "invalid swap result");
+        require(amounts[0] > 0);
     }
 
     function scalePrice(
@@ -777,7 +752,10 @@ contract Vault_V2 is ERC20, ReentrancyGuard {
                 getDerivedPrice(false)) / PRICE_DECIMALS);
     }
 
-    function estimatedDeposit() external view returns (uint256) {
-        return (estimatedPoolSize() * balanceOf(msg.sender)) / totalSupply();
+    function estimatedDeposit(address account) external view returns (uint256) {
+        return
+            totalSupply() == 0
+                ? 0
+                : (estimatedPoolSize() * balanceOf(account)) / totalSupply();
     }
 }
