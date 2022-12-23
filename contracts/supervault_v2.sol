@@ -11,11 +11,11 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interfaces/ivault_v2.sol";
 import "./interfaces/uniswapv2.sol";
 
-contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
+import "hardhat/console.sol";
+
+contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
-
-    address public immutable swapRouter;
 
     address public immutable capitalToken;
 
@@ -29,11 +29,12 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
 
     uint256 private constant MAX_APPROVAL = type(uint256).max;
 
+    event ActiveVaultsUpdated(uint8[] activeVaults);
+
     constructor(
         string memory _name,
         address _capitalToken,
         uint256 _maxCap,
-        address _swapRouter,
         address[] memory _vaults,
         uint8[] memory _activeVaults
     )
@@ -43,7 +44,6 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         )
     {
         require(_capitalToken != address(0), "invalid capitalToken");
-        require(_swapRouter != address(0), "invalid swapRouter");
         require(_vaults.length > 0, "invalid vaults");
         require(_activeVaults.length > 0, "invalid active vaults");
         require(_maxCap > 0, "invalid max cap");
@@ -53,11 +53,11 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         for (i = 0; i < totalVaults; i++) {
             require(_vaults[i] != address(0), "invalid vault address");
             require(
-                IVault_V2(_vaults[i]).vaultParams().quoteToken == _capitalToken,
+                IVaultV2(_vaults[i]).vaultParams().quoteToken == _capitalToken,
                 "not a valid vaults"
             );
 
-            require(IERC20(_capitalToken).approve(_vaults[i], MAX_APPROVAL));
+            IERC20(_capitalToken).safeApprove(_vaults[i], MAX_APPROVAL);
         }
 
         for (i = 0; i < _activeVaults.length; i++) {
@@ -68,16 +68,24 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         capitalToken = _capitalToken;
         vaultName = _name;
         maxCap = _maxCap;
-        swapRouter = _swapRouter;
         vaults = _vaults;
+
+        emit ActiveVaultsUpdated(activeVaults);
     }
 
     function estimatedPoolSize() public view returns (uint256) {
         uint256 total = 0;
         for (uint8 i = 0; i < activeVaults.length; i++) {
-            total += IVault_V2(vaults[activeVaults[i]]).estimatedDeposit();
+            total += IVaultV2(vaults[activeVaults[i]]).estimatedDeposit();
         }
         return total;
+    }
+
+    function estimatedDeposit(address account) external view returns (uint256) {
+        return
+            totalSupply() == 0
+                ? 0
+                : (estimatedPoolSize() * balanceOf(account)) / totalSupply();
     }
 
     function deposit(uint256 amount) external nonReentrant {
@@ -103,7 +111,7 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         require(subAmount > 0, "not a valid amount received");
 
         for (uint8 i = 0; i < vaultsCount; i++) {
-            IVault_V2(vaults[activeVaults[i]]).depositQuote(subAmount);
+            IVaultV2(vaults[activeVaults[i]]).depositQuote(subAmount);
         }
 
         // 4. mint tokens for shares
@@ -120,7 +128,7 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
     function withdraw(uint256 shares) external nonReentrant {
         require(shares <= balanceOf(msg.sender), "invalid share amount");
         for (uint8 i = 0; i < activeVaults.length; i++) {
-            IVault_V2 vault = IVault_V2(vaults[activeVaults[i]]);
+            IVaultV2 vault = IVaultV2(vaults[activeVaults[i]]);
             uint256 subShare = (vault.balanceOf(address(this)) * shares) /
                 totalSupply();
             vault.withdrawQuote(subShare);
@@ -136,7 +144,11 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         _burn(msg.sender, shares);
     }
 
-    function updateVaults(uint8[] calldata _activeVaults) external onlyOwner {
+    function updateVaults(uint8[] calldata _activeVaults)
+        external
+        nonReentrant
+        onlyOwner
+    {
         require(_activeVaults.length > 0, "invalid active vaults");
         uint256 totalVaults = vaults.length;
         uint256 newActiveCount = _activeVaults.length;
@@ -147,7 +159,7 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
 
         // 3. withdraw all funds and swap back to capital token (it could be no quote token in some cases)
         for (i = 0; i < activeVaults.length; i++) {
-            IVault_V2 vault = IVault_V2(vaults[activeVaults[i]]);
+            IVaultV2 vault = IVaultV2(vaults[activeVaults[i]]);
             vault.withdrawQuote(vault.balanceOf(address(this)));
         }
 
@@ -158,7 +170,9 @@ contract Supervault_V2 is ERC20, Ownable, ReentrancyGuard {
         uint256 subAmount = IERC20(capitalToken).balanceOf(address(this)) /
             newActiveCount;
         for (i = 0; i < newActiveCount; i++) {
-            IVault_V2(vaults[activeVaults[i]]).depositQuote(subAmount);
+            IVaultV2(vaults[activeVaults[i]]).depositQuote(subAmount);
         }
+
+        emit ActiveVaultsUpdated(activeVaults);
     }
 }

@@ -14,7 +14,7 @@ struct VaultParams {
     uint256 maxCap;
 }
 
-interface IVault_V2 {
+interface IVaultV2 {
     function estimatedPoolSize() external view returns (uint256);
 
     function estimatedDeposit() external view returns (uint256);
@@ -32,4 +32,6 @@ interface IVault_V2 {
     function position() external view returns (bool);
 
     function balanceOf(address account) external view returns (uint256);
+
+    function totalSupply() external view returns (uint256);
 }
