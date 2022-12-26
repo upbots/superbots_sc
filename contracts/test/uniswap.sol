@@ -5,10 +5,11 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract Uniswap {
     address public immutable bank;
-    address public constant ubxn = 0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6;
+    address public immutable ubxn;
 
-    constructor(address _bank) {
+    constructor(address _bank, address _ubxn) {
         bank = _bank;
+        ubxn = _ubxn;
     }
 
     function swapExactTokensForTokens(
