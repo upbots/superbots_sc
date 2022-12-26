@@ -1,7 +1,7 @@
 const initParams = {
   56: [
     [
-      "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // quote token (USDC)
+      "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // quote token (BUSD)
       "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", // base token (WETH)
       "0xDef1C0ded9bec7F1a1670819833240f027b25EfF", // aggregatorAddr
       "0x10ED43C718714eb63d5aA57B78B54704E256024E", // uniswapRouter

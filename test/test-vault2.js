@@ -420,6 +420,40 @@ describe("VaultV2", function () {
     );
   }).timeout(200000);
 
+  it("Check withdrawQuote in open position", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      vaultInOpenPosition
+    );
+    const amount1 = ethers.utils.parseEther("400");
+    const returnAmount = amount1
+      .mul(10000 - 45)
+      .div(10000)
+      .mul(CUR_PRICE)
+      .mul(9850)
+      .div(10000)
+      .mul(10000 - 100)
+      .div(10000);
+
+    console.log(amount1.mul(10000 - 45).div(10000));
+    console.log(
+      amount1
+        .mul(10000 - 45)
+        .div(10000)
+        .mul(CUR_PRICE)
+        .mul(9850)
+        .div(10000)
+    );
+    await WETH.connect(B).approve(VaultV2.address, APPROVE_MAX);
+
+    const balance = await BUSD.balanceOf(B.address);
+    await VaultV2.connect(B).depositBase(amount1);
+    await VaultV2.connect(B).withdrawQuote(await VaultV2.balanceOf(B.address));
+
+    expect(await BUSD.balanceOf(B.address)).equal(
+      BigNumber.from(balance).add(returnAmount)
+    );
+  }).timeout(200000);
+
   it("Check share calculation of depositBase in open position", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       vaultInOpenPosition
@@ -926,7 +960,7 @@ describe("VaultV2", function () {
       ethers.utils.parseEther("100000")
     );
   });
-  it.only("Check getDerivedPrice", async function () {
+  it("Check getDerivedPrice", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );

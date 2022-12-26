@@ -673,9 +673,8 @@ contract VaultV2 is ERC20, ReentrancyGuard {
             ? IERC20(vaultParams.baseToken)
             : IERC20(vaultParams.quoteToken);
 
-        uint256 expectedAmount = (((oraclePrice *
-            tokenFrom.balanceOf(address(this))) / PRICE_DECIMALS) * SLIPPAGE) /
-            PERCENT_MAX;
+        uint256 expectedAmount = (((oraclePrice * amount) / PRICE_DECIMALS) *
+            SLIPPAGE) / PERCENT_MAX;
 
         uint256[] memory amounts = UniswapRouterV2(vaultParams.uniswapRouter)
             .swapExactTokensForTokens(
