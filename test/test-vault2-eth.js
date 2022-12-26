@@ -9,7 +9,7 @@ const { params } = require("../deploy/inputs/vault_v2");
 const { initParams } = require("../deploy/inputs/vault_v2_init_params");
 
 const APPROVE_MAX = "1000000000000000000000000000";
-const BASE_0X_URL = "https://bsc.api.0x.org/swap/v1/quote";
+const BASE_0X_URL = "https://api.0x.org/swap/v1/quote";
 
 let CUR_PRICE = 1200;
 let ZeroEx, BasePrice;
@@ -34,24 +34,24 @@ const build0xData = async (tokenFrom, tokenTo, amount) => {
 
 const buildBuyData = async (amount) => {
   return await build0xData(
-    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // quote token (USDC)
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", // base token (WETH)
     amount
   );
 };
 
 const buildSellData = async (amount) => {
   return await build0xData(
-    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", // base token (WETH)
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // quote token (USDC)
     amount
   );
 };
 
 const buildZeroExData = async (isBuy, amount) => {
   const amountOut = isBuy
-    ? BigNumber.from(amount).div(CUR_PRICE)
-    : BigNumber.from(amount).mul(CUR_PRICE);
+    ? BigNumber.from(amount).div(CUR_PRICE).mul(1e12)
+    : BigNumber.from(amount).mul(CUR_PRICE).div(1e12);
   const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
     isBuy,
     amount,
@@ -81,24 +81,29 @@ const tradeOnVault = async (isBuy, token, VaultV2) => {
 describe("VaultV2", function () {
   async function deploySCFixture() {
     const bank = await ethers.getImpersonatedSigner(
-      "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"
+      "0x8eb8a3b98659cce290402893d0123abb75e3ab28"
     );
     const BUSD = await ethers.getContractAt(
       "IERC20",
-      "0xe9e7cea3dedca5984780bafc599bd69add087d56"
+      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" // quote token (USDC)
     );
 
     const WETH = await ethers.getContractAt(
       "IERC20",
-      "0x2170ed0880ac9a755fd29b2688956bd959f933f8"
+      "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" // base token (WETH)
     );
 
     const UBXN = await ethers.getContractAt(
       "IERC20",
-      "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6"
+      "0x7A73839bd0e5cdED853cB01aa9773F8989381065"
     );
 
     const [Owner, A, B] = await ethers.getSigners();
+
+    await Owner.sendTransaction({
+      to: bank.address,
+      value: ethers.utils.parseEther("100"),
+    });
 
     const zeroExFactory = await ethers.getContractFactory("ZeroEx");
     ZeroEx = await zeroExFactory.deploy(
@@ -137,39 +142,34 @@ describe("VaultV2", function () {
 
     await VaultV2.initialize(
       [
-        "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // quote token
-        "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", // base token
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // quote token (USDC)
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", // base token (WETH)
         ZeroEx.address, // aggregatorAddr
         Uniswap.address, // uniswapRouter
         [
-          "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-          "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+          "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
         ],
-        "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6", // ubxnToken
-        "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken (paired token with UBXN)
+        "0x7A73839bd0e5cdED853cB01aa9773F8989381065", // ubxnToken
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // ubxnPairToken
         QuotePrice.address, // quotePriceFeed
         BasePrice.address, // basePriceFeed
-        "10000000000000000000000000", // maxCap
+        "10000000000000", // maxCap
       ],
-      initParams[56][1]
+      initParams[1][1]
     );
     await VaultV2.addToWhiteList(Owner.address);
-    await Owner.sendTransaction({
-      to: bank.address,
-      value: ethers.utils.parseEther("100"),
-    });
-
     await BUSD.connect(bank).transfer(
       A.address,
-      ethers.utils.parseEther("1000000")
+      ethers.utils.parseUnits("1000000", 6)
     );
     await BUSD.connect(bank).transfer(
       B.address,
-      ethers.utils.parseEther("1000000")
+      ethers.utils.parseUnits("1000000", 6)
     );
     await BUSD.connect(bank).transfer(
       Owner.address,
-      ethers.utils.parseEther("1000000")
+      ethers.utils.parseUnits("1000000", 6)
     );
     await WETH.connect(bank).transfer(
       A.address,
@@ -181,7 +181,7 @@ describe("VaultV2", function () {
     );
 
     const ubxnBank = await ethers.getImpersonatedSigner(
-      "0x432428923B4F06c10E8A5a98044D09A2DFCa5Ee5"
+      "0x12ca989fce892bc77eeac6b4e2e609cb9050fcca"
     );
     await UBXN.connect(ubxnBank).transfer(
       bank.address,
@@ -208,7 +208,7 @@ describe("VaultV2", function () {
       deploySCFixture
     );
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(Owner).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(Owner).depositQuote(amount1, []);
 
@@ -223,7 +223,7 @@ describe("VaultV2", function () {
     const VaultV2 = await vaultFactory.deploy("TEST", Owner.address);
     await VaultV2.deployed();
 
-    await expect(VaultV2.initialize(...initParams[56])).emit(
+    await expect(VaultV2.initialize(...initParams[1])).emit(
       VaultV2,
       "Initialized"
     );
@@ -234,7 +234,7 @@ describe("VaultV2", function () {
       deploySCFixture
     );
 
-    const amount = ethers.utils.parseEther("10000");
+    const amount = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount);
     expect(await VaultV2.balanceOf(A.address)).equals(
@@ -247,7 +247,7 @@ describe("VaultV2", function () {
       deploySCFixture
     );
 
-    const amount = ethers.utils.parseEther("10000");
+    const amount = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount);
 
@@ -267,7 +267,7 @@ describe("VaultV2", function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );
-    const amount1 = ethers.utils.parseEther("40000");
+    const amount1 = ethers.utils.parseUnits("40000", 6);
     const feeDeposit = amount1.mul(45).div(10000);
     const deposit1 = amount1.sub(feeDeposit);
     const feeWithdraw = deposit1.mul(100).div(10000);
@@ -288,9 +288,9 @@ describe("VaultV2", function () {
       deploySCFixture
     );
 
-    const amount1 = ethers.utils.parseEther("10000");
-    const amount2 = ethers.utils.parseEther("20000");
-    const amount3 = ethers.utils.parseEther("30000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    const amount2 = amount1.mul(2);
+    const amount3 = amount1.mul(2);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await BUSD.connect(B).approve(VaultV2.address, APPROVE_MAX);
     await BUSD.connect(bank).approve(VaultV2.address, APPROVE_MAX);
@@ -362,7 +362,7 @@ describe("VaultV2", function () {
     );
 
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1, []);
 
@@ -500,28 +500,33 @@ describe("VaultV2", function () {
 
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
 
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     const deposited = amount1.mul(10000 - 45).div(10000);
 
+    const totalSupply = await VaultV2.totalSupply();
     const vaultBefore = BigNumber.from(await WETH.balanceOf(VaultV2.address));
     await VaultV2.connect(A).depositQuote(amount1);
     const vaultAfter = BigNumber.from(await WETH.balanceOf(VaultV2.address));
-    const calc = deposited.div(CUR_PRICE).mul(9850).div(10000);
-    expect(vaultAfter.sub(vaultBefore).sub(calc).abs().toNumber()).lessThan(
-      10000
-    );
+    const oraclePrice = await VaultV2.getDerivedPrice(true);
+    const calc = deposited
+      .mul(oraclePrice)
+      .div(BigNumber.from(10).pow(18))
+      .mul(9850)
+      .div(10000);
+    expect(vaultAfter.sub(vaultBefore)).equal(calc);
+    const share = await VaultV2.balanceOf(A.address);
+    const withdrawAmount = vaultAfter
+      .mul(share)
+      .div(BigNumber.from(share).add(totalSupply));
 
     const ABefore = BigNumber.from(await WETH.balanceOf(A.address));
     await VaultV2.connect(A).withdraw(await VaultV2.balanceOf(A.address));
     const AAfter = BigNumber.from(await WETH.balanceOf(A.address));
 
     expect(AAfter.sub(ABefore)).equal(
-      vaultAfter
-        .sub(vaultBefore)
-        .mul(10000 - 100)
-        .div(10000)
+      withdrawAmount.sub(withdrawAmount.mul(100).div(10000))
     );
-  });
+  }).timeout(200000);
 
   it("Check share calculation of depositBase in close position", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
@@ -536,7 +541,12 @@ describe("VaultV2", function () {
     const vaultBefore = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
     await VaultV2.connect(A).depositBase(amount1);
     const vaultAfter = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
-    const calc = deposited.mul(CUR_PRICE).mul(9850).div(10000);
+    const oraclePrice = await VaultV2.getDerivedPrice(false);
+    const calc = deposited
+      .mul(oraclePrice)
+      .div(BigNumber.from(10).pow(18))
+      .mul(9850)
+      .div(10000);
     expect(vaultAfter.sub(vaultBefore).sub(calc).abs().toNumber()).lessThan(
       10000
     );
@@ -559,7 +569,7 @@ describe("VaultV2", function () {
     );
     console.log(await BUSD.balanceOf(A.address));
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
 
@@ -589,7 +599,7 @@ describe("VaultV2", function () {
       deploySCFixture
     );
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
 
@@ -627,7 +637,7 @@ describe("VaultV2", function () {
         .div(price1);
     };
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await BUSD.connect(B).approve(VaultV2.address, APPROVE_MAX);
     await BUSD.connect(bank).approve(VaultV2.address, APPROVE_MAX);
@@ -722,7 +732,7 @@ describe("VaultV2", function () {
       deploySCFixture
     );
 
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
 
@@ -747,7 +757,7 @@ describe("VaultV2", function () {
     );
 
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
 
@@ -790,7 +800,7 @@ describe("VaultV2", function () {
       "0xea5053bbc95bAeC37506993353Cfc0Ca6530C851"
     );
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
     const busdAfter = await BUSD.balanceOf(
@@ -826,7 +836,7 @@ describe("VaultV2", function () {
     );
 
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(A).depositQuote(amount1);
     const deposited1 = amount1.mul(10000 - 45).div(10000);
@@ -838,7 +848,7 @@ describe("VaultV2", function () {
 
     await VaultV2.connect(A).depositBase(amount2);
     expect(await VaultV2.estimatedPoolSize()).equal(
-      deposited1.add(deposited2.mul(1200).mul(9850).div(10000))
+      deposited1.add(deposited2.mul(1200).div(1e12).mul(9850).div(10000))
     );
   });
 
@@ -850,7 +860,7 @@ describe("VaultV2", function () {
     await BUSD.connect(bank).approve(VaultV2.address, APPROVE_MAX);
     await WETH.connect(bank).approve(VaultV2.address, APPROVE_MAX);
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await VaultV2.connect(bank).depositQuote(amount1);
 
     await expect(
@@ -872,7 +882,7 @@ describe("VaultV2", function () {
     );
 
     // deposit
-    const amount1 = ethers.utils.parseEther("10000");
+    const amount1 = ethers.utils.parseUnits("10000", 6);
     await BUSD.connect(B).approve(VaultV2.address, APPROVE_MAX);
     await VaultV2.connect(B).depositQuote(amount1.mul(3));
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
@@ -886,7 +896,7 @@ describe("VaultV2", function () {
 
     await VaultV2.connect(A).depositBase(amount2);
     expect(await VaultV2.estimatedDeposit(A.address)).equal(
-      deposited1.add(deposited2.mul(1200).mul(9850).div(10000))
+      deposited1.add(deposited2.mul(1200).div(1e12).mul(9850).div(10000))
     );
   });
 
@@ -896,7 +906,7 @@ describe("VaultV2", function () {
     const VaultV2 = await vaultFactory.deploy("TEST", Owner.address);
     await VaultV2.deployed();
 
-    let testParams = initParams[56];
+    let testParams = initParams[1];
     testParams[1][11] = ethers.constants.AddressZero;
 
     await expect(VaultV2.initialize(...testParams)).emit(
@@ -909,24 +919,21 @@ describe("VaultV2", function () {
     );
     const BUSD = await ethers.getContractAt(
       "IERC20",
-      "0xe9e7cea3dedca5984780bafc599bd69add087d56"
+      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" // quote token (USDC)
     );
 
-    await BUSD.connect(bank).approve(
-      VaultV2.address,
-      ethers.utils.parseEther("100000000")
-    );
-    await VaultV2.connect(bank).depositQuote(ethers.utils.parseEther("100000"));
+    const amount = ethers.utils.parseUnits("100000", 6);
+    await BUSD.connect(bank).approve(VaultV2.address, amount);
+    await VaultV2.connect(bank).depositQuote(amount);
 
     const before = await BUSD.balanceOf(bank.address);
-    await VaultV2.connect(bank).withdraw(ethers.utils.parseEther("100000"));
+    await VaultV2.connect(bank).withdraw(amount);
     const after = await BUSD.balanceOf(bank.address);
 
-    expect(BigNumber.from(after).sub(before)).equal(
-      ethers.utils.parseEther("100000")
-    );
+    expect(BigNumber.from(after).sub(before)).equal(amount);
   });
-  it.only("Check getDerivedPrice", async function () {
+
+  it("Check getDerivedPrice", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );

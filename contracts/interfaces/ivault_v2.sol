@@ -17,7 +17,7 @@ struct VaultParams {
 interface IVaultV2 {
     function estimatedPoolSize() external view returns (uint256);
 
-    function estimatedDeposit() external view returns (uint256);
+    function estimatedDeposit(address account) external view returns (uint256);
 
     function depositQuote(uint256 amount) external;
 

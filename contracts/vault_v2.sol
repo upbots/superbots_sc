@@ -65,8 +65,8 @@ contract VaultV2 is ERC20, ReentrancyGuard {
     uint256 private constant MAX_APPROVAL = type(uint256).max;
     uint16 public constant PERCENT_MAX = 10000;
     uint256 private constant PRICE_DECIMALS = (10**18);
-    uint16 public constant SLIPPAGE = 9850;
-    uint16 public constant SLIPPAGE_SELL = 9500;
+    uint16 public constant SLIPPAGE = 9850; // 1.5%
+    uint16 public constant SLIPPAGE_SELL = 9500; // 5%
 
     event Initialized(VaultParams, FeeParams);
     event WhiteListAdded(address);
@@ -611,29 +611,23 @@ contract VaultV2 is ERC20, ReentrancyGuard {
         (, int256 basePrice, , , ) = AggregatorV3Interface(
             vaultParams.basePriceFeed
         ).latestRoundData();
-        uint8 baseDecimals = AggregatorV3Interface(vaultParams.basePriceFeed)
-            .decimals();
-        basePrice = scalePrice(
-            basePrice,
-            baseDecimals,
-            IERC20Metadata(vaultParams.baseToken).decimals()
-        );
 
         (, int256 quotePrice, , , ) = AggregatorV3Interface(
             vaultParams.quotePriceFeed
         ).latestRoundData();
-        uint8 quoteDecimals = AggregatorV3Interface(vaultParams.quotePriceFeed)
-            .decimals();
-        quotePrice = scalePrice(
-            quotePrice,
-            quoteDecimals,
-            IERC20Metadata(vaultParams.quoteToken).decimals()
-        );
 
         return
             !isQuotePrice
-                ? ((uint256(basePrice) * PRICE_DECIMALS) / uint256(quotePrice))
-                : ((uint256(quotePrice) * PRICE_DECIMALS) / uint256(basePrice));
+                ? ((uint256(basePrice) *
+                    (10**IERC20Metadata(vaultParams.quoteToken).decimals()) *
+                    PRICE_DECIMALS) /
+                    uint256(quotePrice) /
+                    (10**IERC20Metadata(vaultParams.baseToken).decimals()))
+                : ((uint256(quotePrice) *
+                    (10**IERC20Metadata(vaultParams.baseToken).decimals()) *
+                    PRICE_DECIMALS) /
+                    uint256(basePrice) /
+                    (10**IERC20Metadata(vaultParams.quoteToken).decimals()));
     }
 
     // *** internal functions ***
@@ -664,8 +658,7 @@ contract VaultV2 is ERC20, ReentrancyGuard {
             }
         }
 
-        require(tokenFrom.balanceOf(address(this)) == 0, "IS");
-        require(tokenTo.balanceOf(address(this)) >= expectedAmount, "IS2");
+        require(tokenTo.balanceOf(address(this)) >= expectedAmount, "IS");
     }
 
     function _swapWithUni(
@@ -697,6 +690,7 @@ contract VaultV2 is ERC20, ReentrancyGuard {
     }
 
     function _swapToUBXN(address _from, uint256 _amount) internal {
+        if (_amount == 0) return;
         address[] memory path;
 
         //from token could be one of quote, base, ubxnPair token.
@@ -730,19 +724,6 @@ contract VaultV2 is ERC20, ReentrancyGuard {
             );
 
         require(amounts[0] > 0);
-    }
-
-    function scalePrice(
-        int256 _price,
-        uint8 _priceDecimals,
-        uint8 _decimals
-    ) internal pure returns (int256) {
-        if (_priceDecimals < _decimals) {
-            return _price * int256(10**uint256(_decimals - _priceDecimals));
-        } else if (_priceDecimals > _decimals) {
-            return _price / int256(10**uint256(_priceDecimals - _decimals));
-        }
-        return _price;
     }
 
     function estimatedPoolSize() public view returns (uint256) {

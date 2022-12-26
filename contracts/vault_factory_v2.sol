@@ -9,8 +9,6 @@ contract VaultFactoryV2 is Ownable {
     address public immutable aggregatorAddr;
     address public immutable ubxnToken;
     address public immutable ubxnPairToken;
-    address public immutable quotePriceFeed;
-    address public immutable basePriceFeed;
     address public immutable uniswapRouter;
 
     event VaultGenerated(address);
@@ -19,21 +17,15 @@ contract VaultFactoryV2 is Ownable {
         address _aggregatorAddr,
         address _ubxnToken,
         address _ubxnPairToken,
-        address _quotePriceFeed,
-        address _basePriceFeed,
         address _uniswapRouter
     ) {
         require(_aggregatorAddr != address(0));
         require(_ubxnToken != address(0));
         require(_ubxnPairToken != address(0));
-        require(_quotePriceFeed != address(0));
-        require(_basePriceFeed != address(0));
         require(_uniswapRouter != address(0));
         aggregatorAddr = _aggregatorAddr;
         ubxnToken = _ubxnToken;
         ubxnPairToken = _ubxnPairToken;
-        quotePriceFeed = _quotePriceFeed;
-        basePriceFeed = _basePriceFeed;
         uniswapRouter = _uniswapRouter;
     }
 
@@ -41,6 +33,8 @@ contract VaultFactoryV2 is Ownable {
         string memory _name,
         address _quoteToken,
         address _baseToken,
+        address _quotePriceFeed,
+        address _basePriceFeed,
         address _strategist,
         uint256 _maxCap,
         address[] calldata _uniswapPath,
@@ -57,8 +51,8 @@ contract VaultFactoryV2 is Ownable {
                 _uniswapPath,
                 ubxnToken,
                 ubxnPairToken,
-                quotePriceFeed,
-                basePriceFeed,
+                _quotePriceFeed,
+                _basePriceFeed,
                 _maxCap
             ),
             _feeParams

@@ -76,7 +76,9 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     function estimatedPoolSize() public view returns (uint256) {
         uint256 total = 0;
         for (uint8 i = 0; i < activeVaults.length; i++) {
-            total += IVaultV2(vaults[activeVaults[i]]).estimatedDeposit();
+            total += IVaultV2(vaults[activeVaults[i]]).estimatedDeposit(
+                address(this)
+            );
         }
         return total;
     }

@@ -1,4 +1,4 @@
-const contractName = "Vault_V2";
+const contractName = "VaultV2";
 
 const { sleep } = require("../utils/sleep");
 const { params } = require("./inputs/vault_v2.js");
@@ -28,7 +28,7 @@ const deployFunction = async ({
   await run("verify:verify", {
     address: contractAddress,
     constructorArguments: params,
-    contract: "contracts/vault_v2.sol:Vault_V2",
+    contract: "contracts/vault_v2.sol:VaultV2",
   });
 };
 
@@ -36,4 +36,4 @@ module.exports = deployFunction;
 module.exports.tags = [contractName];
 
 // ***** Deploying *****
-// npx hardhat deploy --network mainnet --tags Vault_V2
+// npx hardhat deploy --network mainnet --tags VaultV2
