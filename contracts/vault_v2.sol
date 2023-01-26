@@ -163,6 +163,23 @@ contract VaultV2 is ERC20, ReentrancyGuard {
         emit StrategistUpdated(_address);
     }
 
+    function setAlgoDevAddress(address _address) external {
+        require(msg.sender == strategist, "NS");
+        require(_address != address(0), "IA");
+        feeParams.addrAlgoDev = _address;
+    }
+
+    function setUpbotsAddress(address _address) external {
+        require(msg.sender == strategist, "NS");
+        require(_address != address(0), "IA");
+        feeParams.addrUpbots = _address;
+    }
+
+    function setPartnerAddress(address _address) external {
+        require(msg.sender == strategist, "NS");
+        feeParams.addrPartner = _address;
+    }
+
     function addToWhiteList(address _address) external {
         require(msg.sender == strategist, "NS");
         require(_address != address(0), "IA");
