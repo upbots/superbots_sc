@@ -4,7 +4,6 @@ const csv = require("csv-parser");
 const Web3 = require("web3");
 require("dotenv").config({ path: "./.env" });
 
-const factoryAddress = process.env.VAULT_FACTORY_V2;
 const ownerAddress = process.env.VAULT_FACTORY_V2_OWNER;
 const ownerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY;
 
@@ -51,7 +50,7 @@ function readCSV(path) {
   return csvPromise;
 }
 
-async function generateVault(vaultParam) {
+async function generateVault(factoryAddress, vaultParam) {
   console.log(`Generating Vault - ${vaultParam[0]}`);
   const vaultFactory = new web3.eth.Contract(VaultFactoryV2Abi, factoryAddress);
 
@@ -122,14 +121,17 @@ program
 program
   .command("deploy")
   .requiredOption("-i, --input <path>", "Parameters csv")
+  .requiredOption("-t, --factory <string>", "Vault Factory")
   .option("-n, --name <string>", "Vault Name")
   .action(async (options) => {
     const vaultParams = await readCSV(options.input);
     if (options.name) {
-      await generateVault(vaultParams[options.name]);
+      await generateVault(options.factory, vaultParams[options.name]);
     } else {
-      for (const param of vaultParams) {
-        await generateVault(param);
+      console.log(vaultParams);
+      for (const property in vaultParams) {
+        // console.log(vaultParams[property]);
+        await generateVault(options.factory, vaultParams[property]);
         console.log("\n");
       }
     }
