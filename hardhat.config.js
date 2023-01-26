@@ -9,8 +9,13 @@ require("@openzeppelin/hardhat-upgrades");
 require("@tenderly/hardhat-tenderly");
 // require("hardhat-gas-reporter");
 
-const { INFURA_API_KEY, MNEMONIC, ETHERSCAN_API_KEY, BSCSCAN_API_KEY, DEPLOYER_PRIVATE_KEY } =
-  process.env;
+const {
+  INFURA_API_KEY,
+  MNEMONIC,
+  ETHERSCAN_API_KEY,
+  BSCSCAN_API_KEY,
+  DEPLOYER_PRIVATE_KEY,
+} = process.env;
 const DEFAULT_MNEMONIC = "hello darkness my old friend";
 
 const sharedNetworkConfig = {};
@@ -40,9 +45,9 @@ module.exports = {
     },
     hardhat: {
       forking: {
-        url: `https://bsc-dataseed.binance.org`,
-        // blockNumber: 23271211
-      }
+        url: `https://bscrpc.com`,
+        // blockNumber: 23864003,
+      },
     },
     mainnet: {
       ...sharedNetworkConfig,
@@ -61,7 +66,7 @@ module.exports = {
     },
     bsc: {
       ...sharedNetworkConfig,
-      url: `https://bsc-dataseed.binance.org`,
+      url: `https://bsc-dataseed1.binance.org/`,
       saveDeployments: true,
     },
   },
@@ -73,9 +78,9 @@ module.exports = {
           optimizer: {
             enabled: true,
             runs: 200,
-          },          
+          },
         },
-      },      
+      },
       {
         version: "0.8.10",
         settings: {
@@ -111,7 +116,7 @@ module.exports = {
             runs: 200,
           },
         },
-      },      
+      },
       { version: "0.6.12" },
       { version: "0.5.16" },
       { version: "0.4.17" },
@@ -142,5 +147,5 @@ module.exports = {
   tenderly: {
     project: "joystick-dao",
     username: "paul108",
-}
+  },
 };

@@ -5,29 +5,29 @@ const abiDecoder = require('abi-decoder');
 require('dotenv').config()
 
 const chainId = 1;
-const web3RpcUrl = `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`;
+const web3RpcUrl = 'https://mainnet.infura.io/v3/91ee1f981ee149309bef06d796400ba9'
 const vaultAddress = '0xe1fE82f61007eeB0d8091439E56610b3ee5f7E3a';
 const walletAddress = '0xdBF6268917aACb48598042855A24c06E94C4FeCF'; // Set your wallet address
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY; // Set private key of your wallet. Be careful! Don't share this key to anyone!
 
-// const swapParams = {
-//     fromTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // BUSD
-//     toTokenAddress: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WBNB
-//     amount: '165301',
-//     fromAddress: vaultAddress, // '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
-//     slippage: 1,
-//     disableEstimate: false,
-//     allowPartialFill: false,
-// };
 const swapParams = {
-  fromTokenAddress: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // BUSD
-  toTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // WBNB
-  amount: '101101279278938',
-  fromAddress: vaultAddress, // '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
-  slippage: 1,
-  disableEstimate: false,
-  allowPartialFill: false,
+    fromTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f', // USDC
+    toTokenAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
+    amount: '99550',
+    fromAddress: vaultAddress, // '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
+    slippage: 1,
+    disableEstimate: false,
+    allowPartialFill: false,
 };
+// const swapParams = {
+//   fromTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f', // BUSD
+//   toTokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // WBNB
+//   amount: '142589186765765110',
+//   fromAddress: walletAddress, // '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
+//   slippage: 1,
+//   disableEstimate: false,
+//   allowPartialFill: false,
+// };
 
 const apiBaseUrl = 'https://api.1inch.io/v4.0/' + chainId;
 const web3 = new Web3(web3RpcUrl);
@@ -38,12 +38,13 @@ function apiRequestUrl(methodName, queryParams) {
 
 async function buildTxForSwap(swapParams) {
     const url = apiRequestUrl('/swap', swapParams);
+    console.log(url)
     return axios.get(url)
     .then(res => res.data)
     .then(res => res.tx);
 }
 
-const pkg= require("../build/artifacts/contracts/vault.sol/Vault.json");
+const pkg= require("../build/artifacts/contracts/eth/vault.sol/VaultETH.json");
 const oneInchAbi = require("./one-inch-abi.json");
 const {abi: VaultAbi} = pkg;
 
@@ -55,6 +56,11 @@ async function testSC() {
     
     const swapTransaction = await buildTxForSwap(swapParams);
     console.log('Transaction for swap: ', swapTransaction);
+
+    
+    const params = abiDecoder
+    .decodeMethod(swapTransaction.data)
+    console.log(JSON.stringify(params));
 
     const ok = await yesno({
         question: 'Do you want to send a transaction to exchange with 1inch router?'
@@ -68,7 +74,7 @@ async function testSC() {
     const vaultContract = new web3.eth.Contract(VaultAbi, vaultAddress);
 
     const contractData = vaultContract.methods
-    .sellOneinchByParams(swapTransaction.data)
+    .buyOneinchByParams(swapTransaction.data)
     .encodeABI();
 
     console.log('4');
