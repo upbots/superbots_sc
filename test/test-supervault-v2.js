@@ -8,6 +8,8 @@ const axios = require("axios");
 const { params } = require("../deploy/inputs/vault_v2");
 const { initParams } = require("../deploy/inputs/vault_v2_init_params");
 
+const { params: supervaultParams } = require("../deploy/inputs/supervault_v2");
+
 const APPROVE_MAX = "1000000000000000000000000000";
 const BASE_0X_URL = "https://bsc.api.0x.org/swap/v1/quote";
 
@@ -169,6 +171,13 @@ describe("SupervaultV2", function () {
     expect(await Supervault_V2.vaults(3)).equal(Vaults[3].address);
     expect(await Supervault_V2.vaults(4)).equal(Vaults[4].address);
   });
+
+  it.only("Should deploy real", async function () {
+    const supervaultFactory = await ethers.getContractFactory("SupervaultV2");
+    const Supervault_V2 = await supervaultFactory.deploy("Supervault");
+    await Supervault_V2.deployed();
+    await Supervault_V2.initialize(...supervaultParams);
+  }).timeout(1000000);
 
   it("Should deposit and withdraw", async function () {
     const { Vaults, Supervault_V2, Owner, BUSD, WETH } = await loadFixture(

@@ -968,4 +968,29 @@ describe("VaultV2", function () {
     console.log(await VaultV2.getDerivedPrice(true));
     console.log(await VaultV2.getDerivedPrice(false));
   });
+  it("Should update wallet addresses", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    await expect(VaultV2.connect(A).setAlgoDevAddress(B.address)).revertedWith(
+      "NS"
+    );
+    await expect(VaultV2.connect(A).setUpbotsAddress(B.address)).revertedWith(
+      "NS"
+    );
+    await expect(VaultV2.connect(A).setPartnerAddress(B.address)).revertedWith(
+      "NS"
+    );
+
+    await VaultV2.connect(Owner).setAlgoDevAddress(B.address);
+    await VaultV2.connect(Owner).setUpbotsAddress(bank.address);
+    await VaultV2.connect(Owner).setPartnerAddress(A.address);
+
+    const feeParams = await VaultV2.feeParams();
+
+    expect(feeParams.addrAlgoDev).equal(B.address);
+    expect(feeParams.addrUpbots).equal(bank.address);
+    expect(feeParams.addrPartner).equal(A.address);
+  });
 });
