@@ -17,9 +17,11 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
-    address public immutable capitalToken;
+    bool public initialized = false;
 
-    uint256 public immutable maxCap;
+    address public capitalToken;
+
+    uint256 public maxCap;
 
     uint8[] public activeVaults;
 
@@ -31,18 +33,23 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
 
     event ActiveVaultsUpdated(uint8[] activeVaults);
 
-    constructor(
-        string memory _name,
-        address _capitalToken,
-        uint256 _maxCap,
-        address[] memory _vaults,
-        uint8[] memory _activeVaults
-    )
+    constructor(string memory _name)
         ERC20(
             string(abi.encodePacked("xUBXT_", _name)),
             string(abi.encodePacked("xUBXT_", _name))
         )
     {
+        vaultName = _name;
+    }
+
+    function initialize(
+        address _capitalToken,
+        uint256 _maxCap,
+        address[] calldata _vaults,
+        uint8[] calldata _activeVaults
+    ) external onlyOwner {
+        require(!initialized, "already initialized");
+
         require(_capitalToken != address(0), "invalid capitalToken");
         require(_vaults.length > 0, "invalid vaults");
         require(_activeVaults.length > 0, "invalid active vaults");
@@ -52,10 +59,6 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
         uint256 totalVaults = _vaults.length;
         for (i = 0; i < totalVaults; i++) {
             require(_vaults[i] != address(0), "invalid vault address");
-            require(
-                IVaultV2(_vaults[i]).vaultParams().quoteToken == _capitalToken,
-                "not a valid vaults"
-            );
 
             IERC20(_capitalToken).safeApprove(_vaults[i], MAX_APPROVAL);
         }
@@ -66,9 +69,10 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
 
         activeVaults = _activeVaults;
         capitalToken = _capitalToken;
-        vaultName = _name;
         maxCap = _maxCap;
         vaults = _vaults;
+
+        initialized = true;
 
         emit ActiveVaultsUpdated(activeVaults);
     }
@@ -91,6 +95,7 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     }
 
     function deposit(uint256 amount) external nonReentrant {
+        require(initialized, "NI");
         uint256 vaultsCount = activeVaults.length;
 
         // Check max cap
@@ -128,6 +133,7 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     }
 
     function withdraw(uint256 shares) external nonReentrant {
+        require(initialized, "NI");
         require(shares <= balanceOf(msg.sender), "invalid share amount");
         for (uint8 i = 0; i < activeVaults.length; i++) {
             IVaultV2 vault = IVaultV2(vaults[activeVaults[i]]);
@@ -151,6 +157,7 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
         nonReentrant
         onlyOwner
     {
+        require(initialized, "NI");
         require(_activeVaults.length > 0, "invalid active vaults");
         uint256 totalVaults = vaults.length;
         uint256 newActiveCount = _activeVaults.length;
