@@ -100,11 +100,6 @@ describe("VaultV2", function () {
 
     const [Owner, A, B] = await ethers.getSigners();
 
-    await Owner.sendTransaction({
-      to: bank.address,
-      value: ethers.utils.parseEther("100"),
-    });
-
     const zeroExFactory = await ethers.getContractFactory("ZeroEx");
     ZeroEx = await zeroExFactory.deploy(
       bank.address,
@@ -159,6 +154,11 @@ describe("VaultV2", function () {
       initParams[1][1]
     );
     await VaultV2.addToWhiteList(Owner.address);
+    await Owner.sendTransaction({
+      to: bank.address,
+      value: ethers.utils.parseEther("100"),
+    });
+
     await BUSD.connect(bank).transfer(
       A.address,
       ethers.utils.parseUnits("1000000", 6)
@@ -213,6 +213,10 @@ describe("VaultV2", function () {
     await VaultV2.connect(Owner).depositQuote(amount1, []);
 
     await tradeOnVault(true, BUSD, VaultV2);
+
+    await VaultV2.connect(Owner).withdraw(
+      await VaultV2.balanceOf(Owner.address)
+    );
 
     return { VaultV2, Owner, A, B, bank, BUSD, WETH };
   }
@@ -418,6 +422,41 @@ describe("VaultV2", function () {
     expect(await WETH.balanceOf(B.address)).equal(
       BigNumber.from(balance).sub(amount1).add(returnAmount)
     );
+  }).timeout(200000);
+
+  it("Check withdrawQuote in open position", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      vaultInOpenPosition
+    );
+    const amount1 = ethers.utils.parseEther("400");
+    const returnAmount = amount1
+      .mul(10000 - 45)
+      .div(10000)
+      .mul(CUR_PRICE)
+      .div(BigNumber.from(10).pow(12))
+      .mul(9850)
+      .div(10000)
+      .mul(10000 - 100)
+      .div(10000);
+
+    console.log(amount1.mul(10000 - 45).div(10000));
+    console.log(
+      amount1
+        .mul(10000 - 45)
+        .div(10000)
+        .mul(CUR_PRICE)
+        .div(BigNumber.from(10).pow(12))
+        .mul(9850)
+        .div(10000)
+    );
+    await WETH.connect(B).approve(VaultV2.address, APPROVE_MAX);
+
+    const balance = await BUSD.balanceOf(B.address);
+    await VaultV2.connect(B).depositBase(amount1);
+    await VaultV2.connect(B).withdrawQuote(await VaultV2.balanceOf(B.address));
+    const balance2 = await BUSD.balanceOf(B.address);
+
+    expect(BigNumber.from(balance2).sub(balance)).equal(returnAmount);
   }).timeout(200000);
 
   it("Check share calculation of depositBase in open position", async function () {
@@ -915,7 +954,7 @@ describe("VaultV2", function () {
     );
 
     const bank = await ethers.getImpersonatedSigner(
-      "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"
+      "0x8eb8a3b98659cce290402893d0123abb75e3ab28"
     );
     const BUSD = await ethers.getContractAt(
       "IERC20",
@@ -932,7 +971,6 @@ describe("VaultV2", function () {
 
     expect(BigNumber.from(after).sub(before)).equal(amount);
   });
-
   it("Check getDerivedPrice", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
@@ -940,5 +978,193 @@ describe("VaultV2", function () {
 
     console.log(await VaultV2.getDerivedPrice(true));
     console.log(await VaultV2.getDerivedPrice(false));
+  });
+  it("Should update wallet addresses", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+
+    await expect(VaultV2.connect(A).setAlgoDevAddress(B.address)).revertedWith(
+      "NS"
+    );
+    await expect(VaultV2.connect(A).setUpbotsAddress(B.address)).revertedWith(
+      "NS"
+    );
+    await expect(VaultV2.connect(A).setPartnerAddress(B.address)).revertedWith(
+      "NS"
+    );
+
+    await VaultV2.connect(Owner).setAlgoDevAddress(B.address);
+    await VaultV2.connect(Owner).setUpbotsAddress(bank.address);
+    await VaultV2.connect(Owner).setPartnerAddress(A.address);
+
+    const feeParams = await VaultV2.feeParams();
+
+    expect(feeParams.addrAlgoDev).equal(B.address);
+    expect(feeParams.addrUpbots).equal(bank.address);
+    expect(feeParams.addrPartner).equal(A.address);
+  });
+
+  it("Should succeed to buy when there is 1.5% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    await updatePrice(1200);
+    // deposit
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount)
+      .mul(BigNumber.from(10).pow(18))
+      .div(CUR_PRICE)
+      .div(1e6);
+    const amountOut1 = amountOut.mul(985).div(1000);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.buy(transactionData);
+  });
+
+  it("Should succeed to buy when there is 1% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    await updatePrice(1200);
+    // deposit
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount)
+      .mul(BigNumber.from(10).pow(18))
+      .div(CUR_PRICE)
+      .div(1e6);
+    const amountOut1 = amountOut.mul(99).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.buy(transactionData);
+  });
+
+  it("Should fail to buy when there is 2% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    await updatePrice(1200);
+    // deposit
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount)
+      .mul(BigNumber.from(10).pow(18))
+      .div(CUR_PRICE)
+      .div(1e6);
+    const amountOut1 = amountOut.mul(98).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await expect(VaultV2.buy(transactionData)).revertedWith("IS");
+  });
+
+  it("Should succeed to sell when there is 4% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    await updatePrice(1200);
+    // deposit
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    await tradeOnVault(true, BUSD, VaultV2);
+
+    const vaultBalance = BigNumber.from(await WETH.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).mul(CUR_PRICE).div(1e12);
+    const amountOut1 = amountOut.mul(96).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      false,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.sell(transactionData);
+  });
+
+  it("Should fail to sell when there is 6% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    await updatePrice(1200);
+    // deposit
+    const amount1 = ethers.utils.parseUnits("10000", 6);
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    await tradeOnVault(true, BUSD, VaultV2);
+
+    const vaultBalance = BigNumber.from(await WETH.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).mul(CUR_PRICE).div(1e12);
+    const amountOut1 = amountOut.mul(94).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      false,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await expect(VaultV2.sell(transactionData)).revertedWith("IS");
   });
 });

@@ -176,7 +176,7 @@ describe("SupervaultV2", function () {
     const supervaultFactory = await ethers.getContractFactory("SupervaultV2");
     const Supervault_V2 = await supervaultFactory.deploy("Supervault");
     await Supervault_V2.deployed();
-    await Supervault_V2.initialize(...supervaultParams);
+    await Supervault_V2.initialize(...supervaultParams[56]);
   }).timeout(1000000);
 
   it("Should deposit and withdraw", async function () {

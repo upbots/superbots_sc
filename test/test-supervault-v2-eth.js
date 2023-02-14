@@ -8,11 +8,47 @@ const axios = require("axios");
 const { params } = require("../deploy/inputs/vault_v2");
 const { initParams } = require("../deploy/inputs/vault_v2_init_params");
 
+const { params: supervaultParams } = require("../deploy/inputs/supervault_v2");
+
 const APPROVE_MAX = "1000000000000000000000000000";
 const BASE_0X_URL = "https://api.0x.org/swap/v1/quote";
 
 let CUR_PRICE = 1200;
 let ZeroEx, BasePrice, QuotePrice;
+
+const updatePrice = async (price) => {
+  CUR_PRICE = price;
+  await BasePrice.setPrice(price * 1e8);
+};
+
+const build0xData = async (tokenFrom, tokenTo, amount) => {
+  try {
+    const transaction = await axios
+      .get(
+        `${BASE_0X_URL}?sellToken=${tokenFrom}&buyToken=${tokenTo}&sellAmount=${amount}`
+      )
+      .then((res) => res.data);
+    return transaction;
+  } catch (e) {
+    return null;
+  }
+};
+
+const buildBuyData = async (amount) => {
+  return await build0xData(
+    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    amount
+  );
+};
+
+const buildSellData = async (amount) => {
+  return await build0xData(
+    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    amount
+  );
+};
 
 const buildZeroExData = async (isBuy, amount) => {
   const amountOut = isBuy
@@ -24,6 +60,24 @@ const buildZeroExData = async (isBuy, amount) => {
     amountOut,
   ]);
   return { data: transactionData, amountOut: amountOut };
+};
+
+const tradeOnVault = async (isBuy, token, Vault_V2) => {
+  const vaultBalance = BigNumber.from(await token.balanceOf(Vault_V2.address));
+  const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+  const transactionData = await buildZeroExData(isBuy, swapAmount.toString());
+  if (!transactionData || !transactionData.data) {
+    throw "0x api fetch error";
+  }
+
+  if (isBuy) {
+    await Vault_V2.buy(transactionData.data);
+  } else {
+    await Vault_V2.sell(transactionData.data);
+  }
+
+  return transactionData.amountOut;
 };
 
 describe("SupervaultV2", function () {
@@ -86,14 +140,15 @@ describe("SupervaultV2", function () {
     }
 
     const supervaultFactory = await ethers.getContractFactory("SupervaultV2");
-    const Supervault_V2 = await supervaultFactory.deploy(
-      "Supervault",
+    const Supervault_V2 = await supervaultFactory.deploy("Supervault");
+    await Supervault_V2.deployed();
+
+    await Supervault_V2.initialize(
       BUSD.address,
       ethers.utils.parseEther("1000000"),
       Vaults.map((vault) => vault.address),
       [0, 1]
     );
-    await Supervault_V2.deployed();
 
     // Fixtures can return anything you consider useful for your tests
     return {
@@ -123,6 +178,13 @@ describe("SupervaultV2", function () {
     expect(await Supervault_V2.vaults(3)).equal(Vaults[3].address);
     expect(await Supervault_V2.vaults(4)).equal(Vaults[4].address);
   });
+
+  it.skip("Should deploy real", async function () {
+    const supervaultFactory = await ethers.getContractFactory("SupervaultV2");
+    const Supervault_V2 = await supervaultFactory.deploy("Supervault");
+    await Supervault_V2.deployed();
+    await Supervault_V2.initialize(...supervaultParams[1]);
+  }).timeout(1000000);
 
   it("Should deposit and withdraw", async function () {
     const { Vaults, Supervault_V2, Owner, BUSD, WETH } = await loadFixture(

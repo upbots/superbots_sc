@@ -14,6 +14,40 @@ const BASE_0X_URL = "https://api.0x.org/swap/v1/quote";
 let CUR_PRICE = 1200;
 let ZeroEx, BasePrice, QuotePrice;
 
+const updatePrice = async (price) => {
+  CUR_PRICE = price;
+  await BasePrice.setPrice(price * 1e8);
+};
+
+const build0xData = async (tokenFrom, tokenTo, amount) => {
+  try {
+    const transaction = await axios
+      .get(
+        `${BASE_0X_URL}?sellToken=${tokenFrom}&buyToken=${tokenTo}&sellAmount=${amount}`
+      )
+      .then((res) => res.data);
+    return transaction;
+  } catch (e) {
+    return null;
+  }
+};
+
+const buildBuyData = async (amount) => {
+  return await build0xData(
+    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    amount
+  );
+};
+
+const buildSellData = async (amount) => {
+  return await build0xData(
+    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    amount
+  );
+};
+
 const buildZeroExData = async (isBuy, amount) => {
   const amountOut = isBuy
     ? BigNumber.from(amount).div(CUR_PRICE)
@@ -24,6 +58,24 @@ const buildZeroExData = async (isBuy, amount) => {
     amountOut,
   ]);
   return { data: transactionData, amountOut: amountOut };
+};
+
+const tradeOnVault = async (isBuy, token, Vault_V2) => {
+  const vaultBalance = BigNumber.from(await token.balanceOf(Vault_V2.address));
+  const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+  const transactionData = await buildZeroExData(isBuy, swapAmount.toString());
+  if (!transactionData || !transactionData.data) {
+    throw "0x api fetch error";
+  }
+
+  if (isBuy) {
+    await Vault_V2.buy(transactionData.data);
+  } else {
+    await Vault_V2.sell(transactionData.data);
+  }
+
+  return transactionData.amountOut;
 };
 
 describe("VaultFactoryV2", function () {
