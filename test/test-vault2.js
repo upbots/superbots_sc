@@ -993,4 +993,153 @@ describe("VaultV2", function () {
     expect(feeParams.addrUpbots).equal(bank.address);
     expect(feeParams.addrPartner).equal(A.address);
   });
+
+  it("Should succeed to buy when there is 1.5% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).div(CUR_PRICE);
+    const amountOut1 = amountOut.mul(985).div(1000);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.buy(transactionData);
+  });
+
+  it("Should succeed to buy when there is 1% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).div(CUR_PRICE);
+    const amountOut1 = amountOut.mul(99).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.buy(transactionData);
+  });
+
+  it("Should fail to buy when there is 2% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    const vaultBalance = BigNumber.from(await BUSD.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).div(CUR_PRICE);
+    const amountOut1 = amountOut.mul(98).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      true,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await expect(VaultV2.buy(transactionData)).revertedWith("IS");
+  });
+
+  it.only("Should succeed to sell when there is 4% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    await tradeOnVault(true, BUSD, VaultV2);
+
+    const vaultBalance = BigNumber.from(await WETH.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).mul(CUR_PRICE);
+    const amountOut1 = amountOut.mul(96).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      false,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await VaultV2.sell(transactionData);
+  });
+
+  it.only("Should fail to sell when there is 6% slippage", async function () {
+    const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
+      deploySCFixture
+    );
+    // deposit
+    const amount1 = ethers.utils.parseEther("10000");
+    await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
+    await VaultV2.connect(A).depositQuote(amount1);
+
+    const deposited = amount1.mul(10000 - 45).div(10000);
+
+    await tradeOnVault(true, BUSD, VaultV2);
+
+    const vaultBalance = BigNumber.from(await WETH.balanceOf(VaultV2.address));
+    const swapAmount = vaultBalance.sub(vaultBalance.mul(8).div(10000));
+
+    const amountOut = BigNumber.from(swapAmount).mul(CUR_PRICE);
+    const amountOut1 = amountOut.mul(94).div(100);
+    const transactionData = ZeroEx.interface.encodeFunctionData("swap", [
+      false,
+      swapAmount,
+      amountOut1,
+    ]);
+
+    if (!transactionData) {
+      throw "0x api fetch error";
+    }
+
+    await expect(VaultV2.sell(transactionData)).revertedWith("IS");
+  });
 });
