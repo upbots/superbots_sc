@@ -8,11 +8,11 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-import "./interfaces/uniswapv2.sol";
-import "./interfaces/ivault.sol";
+import "../interfaces/uniswapv2.sol";
+import "../interfaces/ivault.sol";
 
 
-contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
+contract MasterSuperVaultETH is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
@@ -22,7 +22,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
 
     uint256 public maxCap = 0;
     
-    address public constant pancakeRouter = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // mainnet v2
+    address public constant pancakeRouter = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // mainnet v2 (uniswap router v2)
 
     uint256 public constant pancakeswapSlippage = 10;
 
@@ -93,7 +93,7 @@ contract MasterSuperVault is ERC20, Ownable, ReentrancyGuard {
 
             uint256 subPoolSize = IVault(vaults[i]).poolSize() * shares / IERC20(vaults[i]).totalSupply();
             if (subPoolSize == 0) continue;
-
+            
             uint256 subPoolSizeInCapital;
             if (IVault(vaults[i]).quoteToken() == capitalToken) {
                 subPoolSizeInCapital = subPoolSize;

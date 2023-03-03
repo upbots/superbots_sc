@@ -5,13 +5,13 @@ const abiDecoder = require('abi-decoder');
 
 const chainId = 56;
 const web3RpcUrl = 'https://bsc-dataseed.binance.org';
-const vaultAddress = '0xB990A4fF5900a97B7CB39600531c23D84F4c4333';
-const walletAddress = '0xC12Fc1fCcB07aa658e5eAD56d385864a284eA31F'; // Set your wallet address
+const vaultAddress = '0x6f073b79a7e59547cd3f0472606b1e349049a5e7';
+const walletAddress = '0x6f073b79a7e59547cd3f0472606b1e349049a5e7'; // Set your wallet address
 const privateKey = 'feffa1734dd0bf417038c63b8d7bc3df94a723c021aff6cc844743ccc1dd133e'; // Set private key of your wallet. Be careful! Don't share this key to anyone!
 
 const swapParams = {
-    fromTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // BUSD
-    toTokenAddress: '0xe9e7cea3dedca5984780bafc599bd69add087d56', // WBNB
+    fromTokenAddress: '0xe9e7cea3dedca5984780bafc599bd69add087d56', // BUSD
+    toTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
     amount: '8613000000000000',
     fromAddress: vaultAddress, // '0x939E2C7C5B792958cdA319970d69b8483fE0BaB5',
     slippage: 1,

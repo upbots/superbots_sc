@@ -1,6 +1,6 @@
-const contractName = "VaultFactory";
+const contractName = "VaultFactoryETH";
 
-const { sleep }  = require("../utils/sleep")
+const { sleep }  = require("../../utils/sleep")
 
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
@@ -22,7 +22,7 @@ const deployFunction = async ({ getNamedAccounts, deployments, ethers, upgrades,
     await run("verify:verify", {
         address: contract.address,
         constructorArguments: [],
-        contract: "contracts/vault_factory.sol:VaultFactory"
+        contract: "contracts/eth/vault_factory.sol:VaultFactoryETH"
     })
   }
 };

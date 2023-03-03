@@ -1,6 +1,6 @@
 const contractName = "MasterSuperVault";
 
-const { sleep }  = require("../utils/sleep")
+const { sleep }  = require("../../utils/sleep")
 
 const isVerifying = true;
 const VERIFY_DELAY = 100000;
