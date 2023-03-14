@@ -162,7 +162,7 @@ describe("MigrateVault", function () {
     // console.log(BigNumber.from(after).sub(before));
   }).timeout(200000);
 
-  it.only("Should migrate with base token", async function () {
+  it("Should migrate with base token", async function () {
     const {
       MigrateVault,
       Owner,
@@ -190,39 +190,27 @@ describe("MigrateVault", function () {
       vaults_v2[0].address,
       shares
     );
-    console.log("111");
     const busdBalance = await BUSD.balanceOf(vaults_v2[0].address);
-    console.log("111");
     const WBNB = await ethers.getContractAt(
       "IERC20",
       "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
     );
-    console.log("111");
     const zeroex = await build0xData(
       BUSD.address,
       WBNB.address,
       BigNumber.from(busdBalance).mul(9992).div(10000)
     );
-    console.log("111");
     const botwallet = await ethers.getImpersonatedSigner(
       "0xDA8E9d5b4d410bB3EB7F03ABd1CA90A0E9b92763"
     );
-    console.log("111");
     const amtquote = await BUSD.balanceOf(vaults_v2[0].address);
-    console.log("111");
     const amtbase = await WBNB.balanceOf(vaults_v2[0].address);
-    console.log("111");
     console.log(zeroex);
     await vaults_v2[0].connect(botwallet).buy(zeroex.data);
-    console.log("111");
     const amtquote2 = await BUSD.balanceOf(vaults_v2[0].address);
-    console.log("111");
     const amtbase2 = await WBNB.balanceOf(vaults_v2[0].address);
-    console.log("111");
     console.log(BigNumber.from(amtquote2).sub(amtquote));
-    console.log("111");
     console.log(BigNumber.from(amtbase2).sub(amtbase));
-    console.log("111");
     const shares2 = await vaults_v2[0].balanceOf(A.address);
     console.log(shares2);
 
@@ -234,6 +222,47 @@ describe("MigrateVault", function () {
     );
 
     const shares3 = await vaults_v2_usdc[0].balanceOf(A.address);
+    console.log(shares3);
+  }).timeout(200000);
+
+  it.only("Should migrate in supervault", async function () {
+    const {
+      MigrateVault,
+      Owner,
+      BUSD,
+      A,
+      vaults_v1,
+      vaults_v2,
+      vaults_v2_usdc,
+    } = await loadFixture(deploySCFixture);
+
+    const supervault2 = await ethers.getContractAt(
+      "SupervaultV2",
+      "0xa324CE5681C79C3ED6BBf9239c6C8465128ADA09"
+    );
+    const supervault3 = await ethers.getContractAt(
+      "SupervaultV2",
+      "0x3d45104e82bB17201dBCbE79Bdd33903567944f5"
+    );
+
+    await MigrateVault.addSupervaults(
+      [supervault2.address, supervault3.address],
+      [2, 2]
+    );
+
+    await BUSD.connect(A).approve(supervault2.address, APPROVE_MAX);
+    await supervault2.connect(A).deposit(ethers.utils.parseEther("10000"));
+    const shares2 = await supervault2.balanceOf(A.address);
+    console.log(shares2);
+
+    await supervault2.connect(A).approve(MigrateVault.address, APPROVE_MAX);
+    await MigrateVault.connect(A).migrateSupervault(
+      supervault2.address,
+      supervault3.address,
+      shares2
+    );
+
+    const shares3 = await supervault3.balanceOf(A.address);
     console.log(shares3);
 
     // const before = await BUSD.balanceOf(A.address);

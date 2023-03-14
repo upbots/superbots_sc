@@ -10,15 +10,16 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/ivault_v2.sol";
 import "./interfaces/ivault.sol";
+import "./interfaces/isupervault_v2.sol";
+import "./interfaces/isupervault.sol";
 import "./interfaces/uniswapv2.sol";
-
-import "hardhat/console.sol";
 
 contract MigrateVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
     mapping(address => uint8) public vaultList;
+    mapping(address => uint8) public supervaultList;
 
     address public constant BUSD = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
     address public constant USDC = 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d;
@@ -63,6 +64,29 @@ contract MigrateVault is Ownable, ReentrancyGuard {
         }
     }
 
+    function addSupervault(address _vault, uint8 version) public onlyOwner {
+        require(_vault != address(0), "IA");
+        require(version > 0 && version < 3, "IV");
+
+        supervaultList[_vault] = version;
+
+        IERC20(ISupervault(_vault).capitalToken()).safeApprove(
+            _vault,
+            type(uint256).max
+        );
+    }
+
+    function addSupervaults(
+        address[] calldata _vaults,
+        uint8[] calldata versions
+    ) external onlyOwner {
+        require(_vaults.length > 0, "IA2");
+        require(_vaults.length == versions.length, "IA3");
+        for (uint8 i = 0; i < _vaults.length; i++) {
+            addSupervault(_vaults[i], versions[i]);
+        }
+    }
+
     function migrate(
         address _from,
         address _to,
@@ -79,8 +103,6 @@ contract MigrateVault is Ownable, ReentrancyGuard {
 
         // withdraw capital
         address token;
-        uint256 _before;
-        uint256 _after;
         VaultParams memory vaultParams;
         if (vaultList[_from] == 1) {
             token = IVault(_from).position() == 0
@@ -92,9 +114,9 @@ contract MigrateVault is Ownable, ReentrancyGuard {
                 ? vaultParams.quoteToken
                 : vaultParams.baseToken;
         }
-        _before = IERC20(token).balanceOf(address(this));
+        uint256 _before = IERC20(token).balanceOf(address(this));
         IVault(_from).withdraw(amount);
-        _after = IERC20(token).balanceOf(address(this));
+        uint256 _after = IERC20(token).balanceOf(address(this));
         amount = _after - _before;
         require(amount > 0, "IS");
 
@@ -132,5 +154,53 @@ contract MigrateVault is Ownable, ReentrancyGuard {
 
         // send back new shares to the sender
         IVaultV2(_to).transfer(msg.sender, amount);
+    }
+
+    function migrateSupervault(
+        address _from,
+        address _to,
+        uint256 amount
+    ) external nonReentrant {
+        // assertions
+        require(_from != address(0), "IA");
+        require(_to != address(0), "IA");
+        require(supervaultList[_from] > 0, "IV");
+        require(supervaultList[_to] == 2, "IV2");
+
+        // receive amounts of shares from sender
+        ISupervault(_from).transferFrom(msg.sender, address(this), amount);
+
+        // withdraw capital
+        address token = ISupervault(_from).capitalToken();
+        uint256 _before = IERC20(token).balanceOf(address(this));
+        IVault(_from).withdraw(amount);
+        uint256 _after = IERC20(token).balanceOf(address(this));
+        amount = _after - _before;
+        require(amount > 0, "IS");
+
+        // swap capital if needed
+        address tokenTo = ISupervault(_to).capitalToken();
+        if (token == BUSD && tokenTo == USDC) {
+            _before = IERC20(tokenTo).balanceOf(address(this));
+            uint256[] memory amounts = UniswapRouterV2(pancakeRouter)
+                .swapExactTokensForTokens(
+                    amount,
+                    (amount * 97) / 100,
+                    BUSD_USDC,
+                    address(this),
+                    block.timestamp + 60
+                );
+            _after = IERC20(tokenTo).balanceOf(address(this));
+            amount = _after - _before;
+        }
+
+        // deposit capital
+        _before = IERC20(_to).balanceOf(address(this));
+        ISupervault(_to).deposit(amount);
+        _after = IERC20(_to).balanceOf(address(this));
+        amount = _after - _before;
+
+        // send back new shares to the sender
+        IERC20(_to).transfer(msg.sender, amount);
     }
 }
