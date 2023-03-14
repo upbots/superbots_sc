@@ -6,13 +6,16 @@ const { BigNumber } = require("ethers");
 const axios = require("axios");
 
 const { params } = require("../deploy/inputs/vault_v2");
-const { initParams } = require("../deploy/inputs/vault_v2_init_params");
+const { initParams } = require("../deploy/inputs/vault_v2_init_params_usdc");
 
 const APPROVE_MAX = "1000000000000000000000000000";
 const BASE_0X_URL = "https://bsc.api.0x.org/swap/v1/quote";
 
 let CUR_PRICE = 1200;
 let ZeroEx, BasePrice;
+
+const BUSD_ADDRESS = "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d";
+// const BUSD_ADDRESS = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56";
 
 const updatePrice = async (price) => {
   CUR_PRICE = price;
@@ -30,22 +33,6 @@ const build0xData = async (tokenFrom, tokenTo, amount) => {
   } catch (e) {
     return null;
   }
-};
-
-const buildBuyData = async (amount) => {
-  return await build0xData(
-    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-    amount
-  );
-};
-
-const buildSellData = async (amount) => {
-  return await build0xData(
-    "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-    amount
-  );
 };
 
 const buildZeroExData = async (isBuy, amount) => {
@@ -83,10 +70,7 @@ describe("VaultV2", function () {
     const bank = await ethers.getImpersonatedSigner(
       "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"
     );
-    const BUSD = await ethers.getContractAt(
-      "IERC20",
-      "0xe9e7cea3dedca5984780bafc599bd69add087d56"
-    );
+    const BUSD = await ethers.getContractAt("IERC20", BUSD_ADDRESS);
 
     const WETH = await ethers.getContractAt(
       "IERC20",
@@ -137,14 +121,11 @@ describe("VaultV2", function () {
 
     await VaultV2.initialize(
       [
-        "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // quote token
+        BUSD_ADDRESS, // quote token
         "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", // base token
         ZeroEx.address, // aggregatorAddr
         Uniswap.address, // uniswapRouter
-        [
-          "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-          "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-        ],
+        [BUSD_ADDRESS, "0x2170Ed0880ac9A755fd29B2688956BD959F933F8"],
         "0xc822Bb8f72C212f0F9477Ab064F3bdf116c193E6", // ubxnToken
         "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken (paired token with UBXN)
         QuotePrice.address, // quotePriceFeed
@@ -941,10 +922,7 @@ describe("VaultV2", function () {
     const bank = await ethers.getImpersonatedSigner(
       "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"
     );
-    const BUSD = await ethers.getContractAt(
-      "IERC20",
-      "0xe9e7cea3dedca5984780bafc599bd69add087d56"
-    );
+    const BUSD = await ethers.getContractAt("IERC20", BUSD_ADDRESS);
 
     await BUSD.connect(bank).approve(
       VaultV2.address,
@@ -998,6 +976,7 @@ describe("VaultV2", function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );
+    await updatePrice(1200);
     // deposit
     const amount1 = ethers.utils.parseEther("10000");
     await BUSD.connect(A).approve(VaultV2.address, APPROVE_MAX);
@@ -1081,7 +1060,7 @@ describe("VaultV2", function () {
     await expect(VaultV2.buy(transactionData)).revertedWith("IS");
   });
 
-  it.only("Should succeed to sell when there is 4% slippage", async function () {
+  it("Should succeed to sell when there is 4% slippage", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );
@@ -1112,7 +1091,7 @@ describe("VaultV2", function () {
     await VaultV2.sell(transactionData);
   });
 
-  it.only("Should fail to sell when there is 6% slippage", async function () {
+  it("Should fail to sell when there is 6% slippage", async function () {
     const { VaultV2, Owner, A, B, bank, BUSD, WETH } = await loadFixture(
       deploySCFixture
     );

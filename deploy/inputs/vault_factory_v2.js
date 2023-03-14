@@ -2,7 +2,7 @@ const params = {
   56: [
     "0xDef1C0ded9bec7F1a1670819833240f027b25EfF", // aggregator
     "0xc822bb8f72c212f0f9477ab064f3bdf116c193e6", // ubxnToken
-    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // ubxnPairToken
+    "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", // ubxnPairToken
     "0x10ED43C718714eb63d5aA57B78B54704E256024E", // pancakeswapRouter
   ],
   1: [
