@@ -62,10 +62,16 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
 
             IERC20(_capitalToken).safeApprove(_vaults[i], MAX_APPROVAL);
         }
-
-        for (i = 0; i < _activeVaults.length; i++) {
-            require(_activeVaults[i] < totalVaults, "invalid vault index");
+        for (i = 1; i < _activeVaults.length; i++) {
+            require(
+                _activeVaults[i - 1] < _activeVaults[i],
+                "invalid index array"
+            );
         }
+        require(
+            _activeVaults[_activeVaults.length - 1] < totalVaults,
+            "index out of range"
+        );
 
         activeVaults = _activeVaults;
         capitalToken = _capitalToken;
@@ -162,9 +168,16 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
         uint256 totalVaults = vaults.length;
         uint256 newActiveCount = _activeVaults.length;
         uint8 i;
-        for (i = 0; i < newActiveCount; i++) {
-            require(_activeVaults[i] < totalVaults, "invalid vault index");
+        for (i = 1; i < newActiveCount; i++) {
+            require(
+                _activeVaults[i - 1] < _activeVaults[i],
+                "invalid index array"
+            );
         }
+        require(
+            _activeVaults[newActiveCount - 1] < totalVaults,
+            "index out of range"
+        );
 
         // 3. withdraw all funds and swap back to capital token (it could be no quote token in some cases)
         for (i = 0; i < activeVaults.length; i++) {
