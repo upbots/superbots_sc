@@ -30,6 +30,7 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
     string public vaultName;
 
     uint256 private constant MAX_APPROVAL = type(uint256).max;
+    uint256 public constant MINIMUM_SHARE = (10**18);
 
     event ActiveVaultsUpdated(uint8[] activeVaults);
 
@@ -130,11 +131,10 @@ contract SupervaultV2 is ERC20, Ownable, ReentrancyGuard {
         // 4. mint tokens for shares
         uint256 shares = 0;
         if (totalSupply() == 0) {
-            shares = amount;
+            shares = amount + MINIMUM_SHARE;
         } else {
             shares = (amount * totalSupply()) / _poolSize;
         }
-        require(shares > 0, "failure in share calculation");
         _mint(msg.sender, shares);
     }
 

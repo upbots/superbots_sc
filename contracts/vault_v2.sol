@@ -67,6 +67,7 @@ contract VaultV2 is ERC20, ReentrancyGuard {
     uint256 private constant PRICE_DECIMALS = (10**18);
     uint16 public constant SLIPPAGE = 9850; // 1.5%
     uint16 public constant SLIPPAGE_SELL = 9500; // 5%
+    uint256 public constant MINIMUM_SHARE = (10**18);
 
     event Initialized(VaultParams, FeeParams);
     event WhiteListAdded(address);
@@ -242,11 +243,10 @@ contract VaultV2 is ERC20, ReentrancyGuard {
         // calculate share and send back xUBXN
         uint256 shares = 0;
         if (totalSupply() == 0) {
-            shares = amount;
+            shares = amount + MINIMUM_SHARE;
         } else {
             shares = (amount * totalSupply()) / _poolSize;
         }
-        require(shares > 0, "SC");
         _mint(msg.sender, shares);
     }
 
@@ -301,11 +301,10 @@ contract VaultV2 is ERC20, ReentrancyGuard {
         // 5. calculate share and send back xUBXN
         uint256 shares = 0;
         if (totalSupply() == 0) {
-            shares = amount;
+            shares = amount + MINIMUM_SHARE;
         } else {
             shares = (amount * totalSupply()) / _poolSize;
         }
-        require(shares > 0, "SC");
         _mint(msg.sender, shares);
     }
 
